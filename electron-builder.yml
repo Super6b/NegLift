@@ -1,0 +1,59 @@
+appId: com.neglift.app
+productName: NegLift
+copyright: Copyright © 2026 NegLift
+
+directories:
+  output: release
+  buildResources: build
+
+# 项目路径含空格时 node-gyp 无法重建；开发环境已验证的 native 产物直接打包
+npmRebuild: false
+buildDependenciesFromSource: false
+
+# 应用图标（胶卷+齿轮，黑白）
+icon: build/icon.ico
+
+files:
+  - out/**/*
+  - package.json
+  - models/**/*
+  - "!models/**/*.md"
+
+asarUnpack:
+  - node_modules/lightdrift-libraw/**/*
+  - node_modules/sharp/**/*
+  - node_modules/@img/**/*
+  - models/**/*
+  - node_modules/onnxruntime-node/**/*
+  - node_modules/onnxruntime-common/**/*
+
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-win-portable.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: NegLift
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.photography
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}

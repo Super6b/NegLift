@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- 底：白底黑圆角（负片感） -->
+  <rect x="12" y="12" width="488" height="488" rx="108" fill="#ffffff" stroke="#111111" stroke-width="8"/>
+
+  <!-- 斜置胶卷：黑片身 + 白齿孔/片基框 -->
+  <g transform="rotate(-16 256 248)" filter="url(#soft)">
+    <rect x="96" y="88" width="320" height="340" rx="22" fill="#111111"/>
+    <!-- 片基画面区（白/浅灰，模拟未曝光区） -->
+    <rect x="140" y="140" width="232" height="236" rx="10" fill="#f2f2f2"/>
+    <rect x="148" y="148" width="216" height="220" rx="6" fill="#e8e8e8"/>
+    <!-- 齿孔：白 -->
+    <g fill="#ffffff">
+      <rect x="112" y="104" width="32" height="24" rx="5"/>
+      <rect x="168" y="104" width="32" height="24" rx="5"/>
+      <rect x="224" y="104" width="32" height="24" rx="5"/>
+      <rect x="280" y="104" width="32" height="24" rx="5"/>
+      <rect x="336" y="104" width="32" height="24" rx="5"/>
+      <rect x="112" y="388" width="32" height="24" rx="5"/>
+      <rect x="168" y="388" width="32" height="24" rx="5"/>
+      <rect x="224" y="388" width="32" height="24" rx="5"/>
+      <rect x="280" y="388" width="32" height="24" rx="5"/>
+      <rect x="336" y="388" width="32" height="24" rx="5"/>
+    </g>
+  </g>
+
+  <!-- 前景齿轮：黑齿 + 白芯（黑白反差） -->
+  <g transform="translate(308 312)" filter="url(#soft)">
+    <g fill="#111111">
+      <rect x="-16" y="-88" width="32" height="40" rx="6"/>
+      <rect x="-16" y="48" width="32" height="40" rx="6"/>
+      <rect x="-88" y="-16" width="40" height="32" rx="6"/>
+      <rect x="48" y="-16" width="40" height="32" rx="6"/>
+      <g transform="translate(-62 -62) rotate(45)">
+        <rect x="-16" y="-36" width="32" height="40" rx="6"/>
+      </g>
+      <g transform="translate(62 -62) rotate(45)">
+        <rect x="-16" y="-4" width="32" height="40" rx="6"/>
+      </g>
+      <g transform="translate(-62 62) rotate(45)">
+        <rect x="-16" y="-36" width="32" height="40" rx="6"/>
+      </g>
+      <g transform="translate(62 62) rotate(45)">
+        <rect x="-16" y="-4" width="32" height="40" rx="6"/>
+      </g>
+    </g>
+    <circle r="58" fill="#111111"/>
+    <circle r="34" fill="#ffffff"/>
+    <circle r="13" fill="#111111"/>
+  </g>
+</svg>

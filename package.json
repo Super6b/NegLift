@@ -1,0 +1,43 @@
+{
+  "name": "neglift",
+  "version": "0.1.0",
+  "description": "NegLift - 专业胶卷负片去色罩调色软件",
+  "main": "./out/main/index.js",
+  "author": "NegLift",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:denoise": "esbuild test/denoise.test.ts --bundle --platform=node --format=cjs --target=node20 --alias:@shared=./src/shared --outfile=test/denoise.test.cjs && node test/denoise.test.cjs",
+    "test:holder": "esbuild test/holder.test.ts --bundle --platform=node --format=cjs --target=node20 --alias:@shared=./src/shared --outfile=test/holder.test.cjs && node test/holder.test.cjs",
+    "test:analysis": "esbuild test/analysis.test.ts --bundle --platform=node --format=cjs --target=node20 --alias:@shared=./src/shared --outfile=test/analysis.test.cjs && node test/analysis.test.cjs",
+    "test": "npm run test:denoise && npm run test:holder && npm run test:analysis",
+    "dist": "electron-vite build && electron-builder --win --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:win:portable": "electron-vite build && electron-builder --win portable",
+    "dist:win:nsis": "electron-vite build && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6"
+  },
+  "dependencies": {
+    "lightdrift-libraw": "^1.0.0",
+    "lucide-react": "^1.45.0",
+    "onnxruntime-node": "^1.29.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "sharp": "^0.35.4",
+    "zustand": "^5.0.15"
+  }
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "sony-a7iv-scan",
+    "name": "Sony A7 IV 翻拍",
+    "match": { "make": "sony", "model": "ILCE-7M4" },
+    "decode": {
+      "user_qual": 3,
+      "use_camera_wb": true,
+      "use_camera_matrix": true,
+      "output_color": 1,
+      "no_auto_bright": true
+    },
+    "negative": {
+      "preferredMode": "align"
+    },
+    "notes": "示例：导入后可按你的扫描机身微调 user_qual / preferredMode"
+  }
+]

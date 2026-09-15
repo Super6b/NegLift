@@ -1,0 +1,29 @@
+# Dependencies / build
+node_modules/
+out/
+dist/
+release/
+.cache/
+.electron-cache/
+*.log
+.DS_Store
+test/*.cjs
+
+# Large sample media (do not push)
+raw pic/
+**/*.ARW
+**/*.arw
+**/*.RAF
+**/*.raf
+**/*.tif
+**/*.tiff
+
+# Optional large models
+models/*.onnx
+models/**/*.onnx
+
+# Local secrets / OS
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
