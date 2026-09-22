@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createDefaultParams } from '../src/shared/defaults'
-import { decideFidelityExport, restorationParentReference } from '../src/shared/fidelityDecision'
+import { createFidelityRollLock, decideFidelityExport, fidelityOutputPath, restorationParentReference } from '../src/shared/fidelityDecision'
 import type { FidelityConfiguration } from '../src/shared/fidelityConfiguration'
 
 const now = '2026-09-22T00:00:00.000Z'
@@ -20,8 +20,25 @@ const configuration: FidelityConfiguration = {
   adjustmentLimits: { exposureEv: { min: -1, max: 1 }, whiteBalanceKelvin: { min: -200, max: 200 } },
   visualReview: { displayName: '显示器', displayProfile: '配置', systemDisplaySettings: '默认', reviewedAt: now, reviewedBy: '操作者' }
 }
-const source = { sha256: 'a'.repeat(64), isRaw: true, path: 'C:/source.arw' }
-assert.equal(decideFidelityExport({ mode: 'fidelity', configuration, source, params: createDefaultParams(), now }).status, 'verified-user-attested')
+const source = { sha256: 'a'.repeat(64), isRaw: true, path: 'C:/source.arw', camera: '相机', lens: '镜头', degraded: false }
+const valid = { mode: 'fidelity' as const, configuration, source, params: createDefaultParams(), now, shortCheckPassed: true, shortCheckAt: now }
+assert.equal(decideFidelityExport(valid).status, 'verified-user-attested')
+assert.match(decideFidelityExport({ ...valid, shortCheckAt: undefined }).reasons.join(' '), /缺少本卷简短检查/)
+assert.equal(fidelityOutputPath('C:/exports/frame.jpg', decideFidelityExport({ mode: 'fidelity', configuration: null, source, params: valid.params, now })), 'C:/exports/frame_unverified.tif')
+assert.match(decideFidelityExport({ ...valid, shortCheckPassed: undefined }).reasons.join(' '), /缺少本卷简短检查/)
+assert.match(decideFidelityExport({ ...valid, shortCheckPassed: false }).reasons.join(' '), /简短检查未通过/)
+assert.match(decideFidelityExport({ ...valid, source: { ...source, camera: '其他相机' } }).reasons.join(' '), /相机型号不符/)
+assert.match(decideFidelityExport({ ...valid, source: { ...source, lens: '其他镜头' } }).reasons.join(' '), /镜头不符/)
+assert.match(decideFidelityExport({ ...valid, source: { ...source, degraded: true } }).reasons.join(' '), /降级/)
+assert.match(decideFidelityExport({ ...valid, configuration: { ...configuration, sourceReference: { sha256: 'b'.repeat(64), originalPath: source.path } } }).reasons.join(' '), /校验值不符/)
+assert.match(decideFidelityExport({ ...valid, source: { ...source, sha256: null } }).reasons.join(' '), /缺少源文件校验值/)
+const lock = createFidelityRollLock(valid.params, configuration)
+assert.equal(decideFidelityExport({ ...valid, rollLock: lock }).status, 'verified-user-attested')
+const nextFrame = createDefaultParams(); nextFrame.basic.temperature = 50; nextFrame.basic.exposure = 0.5
+assert.equal(decideFidelityExport({ ...valid, params: nextFrame, rollLock: lock }).status, 'verified-user-attested')
+nextFrame.negative.tRef += 0.1
+assert.match(decideFidelityExport({ ...valid, params: nextFrame, rollLock: lock }).reasons.join(' '), /整卷锁定/)
+assert.match(decideFidelityExport({ ...valid, rollLock: lock, configuration: { ...configuration, thresholds: { ...configuration.thresholds, colorDeltaE2000Max: 4 } } }).reasons.join(' '), /整卷锁定/)
 assert.equal(decideFidelityExport({ mode: 'fidelity', configuration: null, source, params: createDefaultParams(), now }).status, 'trial')
 const restored = createDefaultParams(); restored.denoise.enabled = true
 assert.equal(decideFidelityExport({ mode: 'fidelity', configuration, source, params: restored, now }).status, 'unverified')

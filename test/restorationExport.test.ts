@@ -82,4 +82,30 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch((error) => { console.error(error); process.exitCode = 1 })
+async function testRollLock(): Promise<void> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'neglift-roll-'))
+  try {
+    const files = [join(dir, 'first.png'), join(dir, 'second.png')]
+    for (const [i, file] of files.entries()) {
+      const pixels = Buffer.alloc(32 * 32 * 3)
+      for (let p = 0; p < pixels.length; p += 3) {
+        pixels[p] = i ? 35 : 155
+        pixels[p + 1] = i ? 125 : 70
+        pixels[p + 2] = i ? 210 : 50
+      }
+      await sharp(pixels, { raw: { width: 32, height: 32, channels: 3 } }).png().toFile(file)
+    }
+    const batch = await runBatch({
+      files, outputDir: dir, template: createDefaultParams(), autoHolder: false, autoDetect: true,
+      export: { format: 'tiff', tiffBitDepth: 16, quality: 90, maxDimension: null, dpi: 300, fidelity: { mode: 'fidelity' } }
+    }, () => undefined)
+    assert.equal(batch.results.length, 2)
+    assert.ok(batch.results.every((result) => result.ok), batch.results.map((result) => result.error).join('; '))
+    const records = await Promise.all(batch.results.map(async (result) => JSON.parse(await fs.readFile(`${result.output}.provenance.json`, 'utf8'))))
+    assert.deepEqual(records[0].params.negative, records[1].params.negative)
+    assert.deepEqual(records[0].fidelity.rollLock, records[1].fidelity.rollLock)
+    assert.equal(records[1].fidelity.status, 'trial')
+  } finally { await fs.rm(dir, { recursive: true, force: true }) }
+}
+
+void main().then(testRollLock).catch((error) => { console.error(error); process.exitCode = 1 })

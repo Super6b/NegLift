@@ -27,9 +27,9 @@ import type {
 } from '@shared/types'
 import { computeGeometry, renderLinear, sourceToRegion } from '@shared/pipeline'
 import { migrateExportOptions } from '@shared/exportFormat'
-import { decideFidelityExport, isRestorationParams, restorationParentReference, type FidelityDecision } from '@shared/fidelityDecision'
+import { decideFidelityExport, fidelityOutputPath, isRestorationParams, restorationParentReference, type FidelityDecision } from '@shared/fidelityDecision'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
-import { RAW_EXTENSIONS, RASTER_EXTENSIONS, BMP_EXTENSIONS, decodeImage } from './decode'
+import { RAW_EXTENSIONS, RASTER_EXTENSIONS, BMP_EXTENSIONS, decodeImage, type DecodeResult } from './decode'
 import { cancelBatch, runBatch } from './batch'
 import { encodeAndWrite, writeFidelityProvenance } from './export'
 import { hashFile, verifiedParent } from './verifiedParent'
@@ -290,14 +290,9 @@ async function applyRepairAndEncode(
   })
 }
 
-function withUnverifiedSuffix(filePath: string, decision: FidelityDecision): string {
-  if (!decision.needsUnverifiedSuffix || /_unverified\.[^.]+$/i.test(filePath)) return filePath
-  return filePath.replace(/(\.[^.\\/]+)$/, '_unverified$1')
-}
-
 async function fidelityExport(
   sourcePath: string,
-  isRaw: boolean,
+  decode: DecodeResult,
   params: EditParams,
   options: ExportOptions
 ): Promise<{ decision: FidelityDecision; options: ExportOptions; provenance: string }> {
@@ -317,14 +312,14 @@ async function fidelityExport(
   }
   const decision = decideFidelityExport({
     mode: requested?.mode ?? 'practical', configuration, params,
-    source: { path: sourcePath, isRaw, sha256: sourceSha256 },
-    now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed,
+    source: { path: sourcePath, isRaw: decode.isRaw, sha256: sourceSha256, camera: decode.camera, lens: decode.lens, degraded: decode.degraded },
+    now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed, shortCheckAt: requested?.shortCheckAt, rollLock: requested?.rollLock,
     parent: parent ? { sourcePath, sourceSha256: parent.sourceSha256, status: 'verified-user-attested' } : null
   })
   if (requested?.mode === 'fidelity' && isRestorationParams(params) && !parent) {
     throw new Error('修复派生文件需要已验证的父版及其完整谱系记录；请重新导出父版，或使用实用转换。')
   }
-  const output = { ...options, filePath: withUnverifiedSuffix(options.filePath, decision) }
+  const output = { ...options, filePath: fidelityOutputPath(options.filePath, decision) }
   if (decision.requiresTiff16) { output.format = 'tiff'; output.tiffBitDepth = 16 }
   const provenance = JSON.stringify({
     schemaVersion: 1, sourcePath, sourceSha256,
@@ -444,7 +439,7 @@ function registerIpc(): void {
     try {
       const legacyDng = (options as { format?: unknown }).format === 'dng'
       const migrated = migrateExportOptions(options)
-      const prepared = await fidelityExport(session.sourcePath, session.decode.isRaw, params, migrated)
+      const prepared = await fidelityExport(session.sourcePath, session.decode, params, migrated)
       const size = await applyRepairAndEncode(session.decode, params, prepared.options, prepared.provenance, prepared.decision.status !== 'practical')
       if (prepared.decision.status !== 'practical') await writeFidelityProvenance(prepared.options.filePath, prepared.provenance)
       return {
@@ -475,7 +470,7 @@ function registerIpc(): void {
         const decode = await decodeImage(sourcePath)
         const legacyDng = (options as { format?: unknown }).format === 'dng'
         const migrated = migrateExportOptions({ ...options, filePath: destPath })
-        const prepared = await fidelityExport(sourcePath, decode.isRaw, params, migrated)
+        const prepared = await fidelityExport(sourcePath, decode, params, migrated)
         const size = await applyRepairAndEncode(decode, params, prepared.options, prepared.provenance, prepared.decision.status !== 'practical')
         if (prepared.decision.status !== 'practical') await writeFidelityProvenance(prepared.options.filePath, prepared.provenance)
         const geo = computeGeometry(decode.width, decode.height, params.transform)

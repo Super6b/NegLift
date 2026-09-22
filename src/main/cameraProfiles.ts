@@ -21,8 +21,8 @@ function profileDir(): string {
 
 export async function loadUserProfiles(force = false): Promise<CameraProfile[]> {
   if (userProfiles && !force) return userProfiles
-  const dir = profileDir()
   try {
+    const dir = profileDir()
     await fs.mkdir(dir, { recursive: true })
     const files = await fs.readdir(dir)
     const list: CameraProfile[] = []

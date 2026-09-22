@@ -35,6 +35,7 @@ export function BatchDialog() {
   const [fidelity, setFidelity] = useState(false)
   const [configurations, setConfigurations] = useState<FidelityConfiguration[]>([])
   const [configurationId, setConfigurationId] = useState('')
+  const [shortCheckAt, setShortCheckAt] = useState<string | null>(null)
 
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<BatchProgress | null>(null)
@@ -44,6 +45,7 @@ export function BatchDialog() {
     if (!open) return
     setResults([])
     setProgress(null)
+    setShortCheckAt(null)
   }, [open])
 
   useEffect(() => {
@@ -82,7 +84,7 @@ export function BatchDialog() {
         tiffBitDepth: fidelity ? 16 : bitDepth,
         maxDimension: maxDimension > 0 ? maxDimension : null,
         dpi,
-        fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined
+        fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined, shortCheckPassed: !!shortCheckAt, shortCheckAt: shortCheckAt ?? undefined } : undefined
       },
       autoHolder: useTemplate ? autoHolder : true,
       autoDetect: useTemplate ? autoDetect : true
@@ -166,10 +168,11 @@ export function BatchDialog() {
             <div className="section-head"><span className="section-title">整卷保真锁定（预览）</span></div>
             <label className="switch-row"><input type="checkbox" checked={fidelity} disabled={running} onChange={(e) => setFidelity(e.target.checked)} /><span>对本卷使用同一采集配置</span></label>
             {fidelity && <>
-              <select className="field" value={configurationId} disabled={running} onChange={(e) => setConfigurationId(e.target.value)}>
+              <select className="field" value={configurationId} disabled={running} onChange={(e) => { setConfigurationId(e.target.value); setShortCheckAt(null) }}>
                 <option value="">未选择采集配置（整卷将标记为未验证）</option>
                 {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
               </select>
+              {configurationId && <label className="switch-row"><input type="checkbox" checked={!!shortCheckAt} disabled={running} onChange={(e) => setShortCheckAt(e.target.checked ? new Date().toISOString() : null)} /><span>确认本卷简短检查已通过</span></label>}
               <p className="hint">16 位 TIFF；自动反相仅为视觉起点。没有通过相应验证的帧标记为 _unverified，不代表色彩准确。</p>
             </>}
           </div>

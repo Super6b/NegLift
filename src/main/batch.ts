@@ -24,7 +24,7 @@ import { encodeAndWrite, writeFidelityProvenance } from './export'
 import { applyModelRepairs } from './inpaint/model'
 import { sourceToRegion } from '@shared/pipeline'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
-import { decideFidelityExport, isRestorationParams } from '@shared/fidelityDecision'
+import { createFidelityRollLock, decideFidelityExport, isRestorationParams, type FidelityRollLock } from '@shared/fidelityDecision'
 import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 import { fidelityDerivative, hashFile, verifiedParent } from './verifiedParent'
 
@@ -53,13 +53,16 @@ interface PreparedJob {
 /** 用模板风格 + 每张检测结果组装最终参数 */
 function buildParams(
   template: EditParams,
-  detected: ReturnType<typeof detectNegative>,
+  detected: ReturnType<typeof detectNegative> | null,
   holder: CropRect | null,
-  req: BatchRequest
+  req: BatchRequest,
+  rollLock: FidelityRollLock | null
 ): EditParams {
   const next = cloneParams(template)
 
-  if (req.autoDetect) {
+  if (req.export.fidelity?.mode === 'fidelity' && rollLock) {
+    next.negative = { ...rollLock.params.negative, base: [...rollLock.params.negative.base], balance: [...rollLock.params.negative.balance], alignBlack: [...rollLock.params.negative.alignBlack], alignWhite: [...rollLock.params.negative.alignWhite] }
+  } else if (req.autoDetect && detected) {
     next.negative.enabled = true
     next.negative.mode = detected.mode
     next.negative.base = [...detected.base] as Vec3
@@ -83,7 +86,8 @@ async function decodeQuiet(filePath: string): Promise<DecodeResult> {
 async function analyzeAndRender(
   job: PreparedJob,
   template: EditParams,
-  req: BatchRequest
+  req: BatchRequest,
+  rollLock: FidelityRollLock | null
 ): Promise<{ params: EditParams; rendered: ReturnType<typeof renderLinear>; camera?: string }> {
   const analysis = decimateLinear(job.decode.linear, job.decode.width, job.decode.height, ANALYSIS_MAX_EDGE)
   const holderScan: TransformParams['holderScan'] =
@@ -93,15 +97,10 @@ async function analyzeAndRender(
     : template.transform.validArea
       ? { ...template.transform.validArea }
       : null
-  const detected = detectNegative(
-    analysis.data,
-    analysis.width,
-    analysis.height,
-    holder,
-    holder,
-    template.transform.excludeAreas
-  )
-  const params = buildParams(template, detected, holder, req)
+  const detected = req.autoDetect && (req.export.fidelity?.mode !== 'fidelity' || !rollLock)
+    ? detectNegative(analysis.data, analysis.width, analysis.height, holder, holder, template.transform.excludeAreas)
+    : null
+  const params = buildParams(template, detected, holder, req, rollLock)
   if (await fidelityDerivative(job.filePath)) {
     params.negative.enabled = false
     params.transform.validArea = null
@@ -142,7 +141,8 @@ async function encodeJob(
   rendered: ReturnType<typeof renderLinear>,
   params: EditParams,
   req: BatchRequest,
-  configuration: FidelityConfiguration | null
+  configuration: FidelityConfiguration | null,
+  rollLock: FidelityRollLock | null
 ): Promise<string> {
   const stem = job.fileName.replace(/\.[^.]+$/, '') || job.fileName
   const sourceSha256 = req.export.fidelity?.mode === 'fidelity' ? await hashFile(job.filePath) : null
@@ -152,9 +152,9 @@ async function encodeJob(
   const changes = prior ? Object.fromEntries(Object.entries(params).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(prior.params[key as keyof EditParams]))) : null
   const decision = decideFidelityExport({
     mode: req.export.fidelity?.mode ?? 'practical', configuration,
-    source: { path: job.filePath, isRaw: job.decode.isRaw, sha256: sourceSha256 }, params,
+    source: { path: job.filePath, isRaw: job.decode.isRaw, sha256: sourceSha256, camera: job.decode.camera, lens: job.decode.lens, degraded: job.decode.degraded }, params,
     parent: parent ? { sourcePath: job.filePath, sourceSha256: prior!.sha256, status: 'verified-user-attested' } : null,
-    now: new Date().toISOString(), shortCheckPassed: req.export.fidelity?.shortCheckPassed
+    now: new Date().toISOString(), shortCheckPassed: req.export.fidelity?.shortCheckPassed, shortCheckAt: req.export.fidelity?.shortCheckAt, rollLock
   })
   if (req.export.fidelity?.mode === 'fidelity' && isRestorationParams(params) && !parent) {
     throw new Error('修复派生文件需要已验证的父版及其完整谱系记录；请重新导出父版，或使用实用转换。')
@@ -163,7 +163,7 @@ async function encodeJob(
   const suffix = decision.needsUnverifiedSuffix ? '_unverified' : ''
   const outName = `${stem}_neglift${suffix}.${OUT_EXT[format]}`
   const outPath = await uniqueOutputPath(req.outputDir, outName)
-  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration, parent, changes }, params })
+  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration, shortCheckPassed: req.export.fidelity?.shortCheckPassed, shortCheckAt: req.export.fidelity?.shortCheckAt, rollLock, parent, changes }, params })
   await encodeAndWrite({
     display: rendered.data,
     width: rendered.width,
@@ -191,6 +191,7 @@ export async function runBatch(
   const total = req.files.length
   const results: BatchFileResult[] = []
   const template = cloneParams(req.template)
+  let rollLock: FidelityRollLock | null = null
 
   const emit = (
     index: number,
@@ -275,11 +276,13 @@ export async function runBatch(
 
     try {
       emit(i, fileName, 'analyze / render', 0.58)
-      const { rendered, params } = await analyzeAndRender(job, template, req)
+      const { rendered, params } = await analyzeAndRender(job, template, req, rollLock)
       if (cancelFlag) return finish('cancelled', i, fileName)
 
+      if (req.export.fidelity?.mode === 'fidelity' && !rollLock) rollLock = createFidelityRollLock(params, configuration)
+
       emit(i, fileName, 'encode', 0.9)
-      const outPath = await encodeJob(job, rendered, params, req, configuration)
+      const outPath = await encodeJob(job, rendered, params, req, configuration, rollLock)
       results.push({ fileName, ok: true, output: outPath })
       emit(i, fileName, 'done', 1)
     } catch (err) {

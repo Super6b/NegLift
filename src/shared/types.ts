@@ -306,6 +306,8 @@ export interface ExportOptions {
     mode: import('./fidelityDecision').FidelityMode
     configurationId?: string
     shortCheckPassed?: boolean
+    shortCheckAt?: string
+    rollLock?: import('./fidelityDecision').FidelityRollLock
   }
 }
 

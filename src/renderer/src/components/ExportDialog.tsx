@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FolderOpen, Share2, X } from 'lucide-react'
 import type { ExportOptions } from '@shared/types'
 import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
+import { createFidelityRollLock } from '@shared/fidelityDecision'
 import { useEditor } from '../state/store'
 
 type ExportFormat = ExportOptions['format']
@@ -51,6 +52,7 @@ export function ExportDialog() {
   const [fidelity, setFidelity] = useState(false)
   const [configurations, setConfigurations] = useState<FidelityConfiguration[]>([])
   const [configurationId, setConfigurationId] = useState('')
+  const [shortCheckAt, setShortCheckAt] = useState<string | null>(null)
 
   const meta = useMemo(() => {
     if (!image) return null
@@ -66,6 +68,7 @@ export function ExportDialog() {
 
   useEffect(() => {
     if (!open) return
+    setShortCheckAt(null)
     void window.negLift.listFidelityConfigurations().then((items) => setConfigurations(items.filter((item) => item.status === 'active')))
   }, [open])
 
@@ -93,7 +96,7 @@ export function ExportDialog() {
         const filePath = target ?? (await choosePath())
         if (!filePath) return
         const result = await window.negLift.exportImage(
-          { filePath, format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined },
+          { filePath, format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined, shortCheckPassed: !!shortCheckAt, shortCheckAt: shortCheckAt ?? undefined } : undefined },
           params
         )
         if (!result.ok) {
@@ -123,6 +126,8 @@ export function ExportDialog() {
 
       let ok = 0
       let fail = 0
+      const configuration = configurations.find((item) => item.id === configurationId) ?? null
+      const rollLock = fidelity ? createFidelityRollLock(items[0].params, configuration) : undefined
       for (const item of items) {
         const src = item.meta?.filePath ?? item.image?.meta.filePath
         if (!src) continue
@@ -130,7 +135,7 @@ export function ExportDialog() {
         const result = await window.negLift.exportImageFromPath(
           src,
           destPath,
-          { format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined },
+          { format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined, shortCheckPassed: !!shortCheckAt, shortCheckAt: shortCheckAt ?? undefined, rollLock } : undefined },
           item.params
         )
         if (result.ok) {
@@ -208,10 +213,11 @@ export function ExportDialog() {
             <div className="section-head"><span className="section-title">保真模式预览</span></div>
             <label className="switch-row"><input type="checkbox" checked={fidelity} onChange={(e) => setFidelity(e.target.checked)} /><span>生成可追溯保真派生文件</span></label>
             {fidelity && <>
-              <select className="field" value={configurationId} onChange={(e) => setConfigurationId(e.target.value)}>
+              <select className="field" value={configurationId} onChange={(e) => { setConfigurationId(e.target.value); setShortCheckAt(null) }}>
                 <option value="">未选择采集配置（将导出未验证文件）</option>
                 {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
               </select>
+              {configurationId && <label className="switch-row"><input type="checkbox" checked={!!shortCheckAt} onChange={(e) => setShortCheckAt(e.target.checked ? new Date().toISOString() : null)} /><span>确认本卷简短检查已通过</span></label>}
               <p className="hint">16 位 TIFF；自动反相仅为视觉起点。没有通过相应验证的文件标记为 _unverified，不代表色彩准确；只有通过时才称“用户确认的验证”。</p>
             </>}
           </div>
