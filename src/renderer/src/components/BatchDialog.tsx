@@ -175,7 +175,7 @@ export function BatchDialog() {
                 <option value="">未选择采集配置（整卷将标记为未验证）</option>
                 {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
               </select>
-              <p className="hint">保真批量固定输出 16 位 TIFF；每帧源文件与调整范围分别判定，未通过时自动加未验证后缀。</p>
+              <p className="hint">16 位 TIFF；自动反相仅为视觉起点。没有通过相应验证的帧标记为 _unverified，不代表色彩准确。</p>
             </>}
           </div>
 

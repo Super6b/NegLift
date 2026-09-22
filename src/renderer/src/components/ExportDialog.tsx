@@ -213,7 +213,7 @@ export function ExportDialog() {
                 <option value="">未选择采集配置（将导出未验证文件）</option>
                 {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
               </select>
-              <p className="hint">保真模式固定导出 16 位 TIFF；缺少或未通过证据会自动加 `_unverified` 后缀，并写入配套谱系记录文件。</p>
+              <p className="hint">16 位 TIFF；自动反相仅为视觉起点。没有通过相应验证的文件标记为 _unverified，不代表色彩准确；只有通过时才称“用户确认的验证”。</p>
             </>}
           </div>
 

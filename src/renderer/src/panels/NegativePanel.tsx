@@ -61,7 +61,7 @@ export function NegativePanel() {
           <span>统计区域 {areaPercent.toFixed(1)}%{excludeAreas.length ? ` · 已排除 ${excludeAreas.length} 处特殊区域` : ''}</span>
         </p>
         <p className="hint">
-          【步骤 2 / 3】在有效区域上还原标准正片色：自动检测按「裁切 → 有效区域 → 排除区」统计片基/黑场/白场。
+          【步骤 2 / 3】在有效区域上自动反相作为视觉起点：自动检测按「裁切 → 有效区域 → 排除区」统计片基/黑场/白场。
           颜色正常后再进「风格调色」；偏色时可切换校正方式或用吸管取样片基。
           {validArea
             ? ` 有效区域：${(validArea.w * 100).toFixed(1)}% × ${(validArea.h * 100).toFixed(1)}%。`

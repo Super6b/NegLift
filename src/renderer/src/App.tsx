@@ -24,8 +24,8 @@ import { createDefaultParams } from '@shared/defaults'
 /**
  * 三段式工作流：
  * ① 有效区域 —— 定框（片夹/几何）
- * ② 标准色彩 —— 去色罩还原真实颜色
- * ③ 风格调色 —— 在标准色上做创作
+ * ② 自动校正 —— 去色罩只是视觉起点，不代表实测色彩准确
+ * ③ 风格调色 —— 在自动校正基础上做创作
  */
 type StageId = 'area' | 'correct' | 'grade'
 
@@ -62,8 +62,8 @@ const STAGES: StageDef[] = [
   {
     id: 'correct',
     num: '2',
-    label: '标准色彩',
-    desc: '去色罩与降噪：还原接近实拍的标准正片颜色。完成后再进入风格调色，避免在错误底色上调风格。',
+    label: '自动校正',
+    desc: '自动检测去色罩只提供视觉起点，不代表实测色彩准确；必要时可手动调整。',
     tabs: [
       { id: 'negative', label: '去色罩' },
       { id: 'repair', label: '除尘' },
@@ -75,7 +75,7 @@ const STAGES: StageDef[] = [
     id: 'grade',
     num: '3',
     label: '风格调色',
-    desc: '在已校正的标准色上做基础、曲线、HSL、分级与预设，进行风格化创作。',
+    desc: '在自动校正的视觉起点上做基础、曲线、HSL、分级与预设，进行风格化创作。',
     tabs: [
       { id: 'basic', label: '基础' },
       { id: 'curves', label: '曲线' },

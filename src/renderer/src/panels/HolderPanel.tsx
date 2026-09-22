@@ -111,7 +111,7 @@ export function HolderPanel() {
         </div>
         <p className="hint">
           【步骤 1 / 3】先定有效底片范围：片夹与片框黑边不参与去色罩统计。
-          识别后可再进「几何」做旋转裁切；完成后点上方「下一步：标准色彩」。
+          识别后可再进「几何」做旋转裁切；完成后点上方「下一步：自动校正」。
           {t.validArea
             ? ` 当前有效区域：${(t.validArea.w * 100).toFixed(1)}% × ${(t.validArea.h * 100).toFixed(1)}%。`
             : ' 当前使用整幅画面。'}
