@@ -2,13 +2,16 @@ import assert from 'node:assert/strict'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import sharp from 'sharp'
 import { encodeAndWrite, writeFidelityProvenance } from '../src/main/export'
 import { fidelityDerivative, hashFile, verifiedParent } from '../src/main/verifiedParent'
 import { createDefaultParams } from '../src/shared/defaults'
 import { openSession } from '../src/main/session'
 import { runBatch } from '../src/main/batch'
+import { resolveDecodeOutputParams } from '../src/shared/cameraProfile'
 
 async function main(): Promise<void> {
+  assert.equal(resolveDecodeOutputParams({ id: 'legacy', name: 'legacy', match: {}, decode: { output_color: 2 } }).output_color, 1)
   const dir = await fs.mkdtemp(join(tmpdir(), 'neglift-restoration-'))
   const parent = join(dir, 'parent.tif')
   const child = join(dir, 'child.tif')
@@ -24,6 +27,10 @@ async function main(): Promise<void> {
     assert.equal(await fs.readFile(parent, 'utf8'), 'preserved parent')
     await encodeAndWrite(input(child))
     assert.ok((await fs.readFile(child)).length > 0)
+    const tiff = await sharp(child).metadata()
+    assert.equal(tiff.depth, 'ushort')
+    assert.equal(tiff.hasProfile, true)
+    assert.equal(tiff.icc?.subarray(36, 40).toString('ascii'), 'acsp')
     await encodeAndWrite(input(verified))
     await writeFidelityProvenance(verified, JSON.stringify({ fidelity: { status: 'verified-user-attested' }, params: createDefaultParams() }))
     assert.equal((await verifiedParent(verified))?.sha256, await hashFile(verified))

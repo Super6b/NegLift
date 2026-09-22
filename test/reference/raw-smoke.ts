@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     await writeFidelityProvenance(output, provenance)
     const metadata = await sharp(output).metadata()
     assert(metadata.width === rendered.width && metadata.height === rendered.height && metadata.depth === 'ushort')
+    assert(metadata.hasProfile && metadata.icc?.subarray(36, 40).toString('ascii') === 'acsp')
     const sidecar = JSON.parse(await fs.readFile(`${output}.provenance.json`, 'utf8'))
     assert.equal(sidecar.outputSha256, await sha256(output))
     const preview = path.join(outputDir, `${path.parse(source).name}-preview.jpg`)

@@ -6,6 +6,17 @@ import type { ExportOptions } from '@shared/types'
 import { encodeBmp } from '../decode/bmp'
 import { encodeTiff16 } from './tiff'
 
+let srgbProfile: Promise<Buffer> | undefined
+function getSrgbProfile(): Promise<Buffer> {
+  return srgbProfile ??= sharp(Buffer.from([0, 0, 0]), { raw: { width: 1, height: 1, channels: 3 } })
+    .png().withIccProfile('srgb').toBuffer()
+    .then(async (png) => {
+      const icc = (await sharp(png).metadata()).icc
+      if (!icc) throw new Error('无法取得 sRGB ICC 配置')
+      return icc
+    })
+}
+
 /** 显示域 16bit RGB -> 8bit RGB */
 function toRgb8(display: Uint16Array): Buffer {
   const out = Buffer.allocUnsafe(display.length)
@@ -33,7 +44,7 @@ export async function encodeAndWrite(input: EncodeInput): Promise<number> {
   const { format, quality, tiffBitDepth, dpi, filePath } = options
 
   if (format === 'tiff' && tiffBitDepth === 16) {
-    const buf = encodeTiff16({ rgb16: display, width, height, dpi, description: input.provenanceSummary })
+    const buf = encodeTiff16({ rgb16: display, width, height, dpi, description: input.provenanceSummary, iccProfile: await getSrgbProfile() })
     await fs.writeFile(filePath, buf, { flag: input.exclusive ? 'wx' : 'w' })
     return buf.length
   }

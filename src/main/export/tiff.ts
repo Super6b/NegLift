@@ -4,7 +4,7 @@
  * 之所以自行实现：sharp 的 raw 输入固定按 8 位解释，无法直接产出 16 位文件。
  */
 
-const TYPE_SIZES: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 10: 8 }
+const TYPE_SIZES: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 10: 8 }
 
 interface IfdEntry {
   tag: number
@@ -30,6 +30,7 @@ const TAG = {
   PlanarConfiguration: 284,
   ResolutionUnit: 296,
   SampleFormat: 339,
+  IccProfile: 34675,
   ImageDescription: 270,
 } as const
 
@@ -64,6 +65,7 @@ export interface TiffEncodeOptions {
   height: number
   dpi: number
   description?: string
+  iccProfile?: Buffer
 }
 
 export function encodeTiff16(options: TiffEncodeOptions): Buffer {
@@ -93,6 +95,7 @@ export function encodeTiff16(options: TiffEncodeOptions): Buffer {
   push(TAG.PlanarConfiguration, 3, 1, short(1))
   push(TAG.ResolutionUnit, 3, 1, short(2))
   push(TAG.SampleFormat, 3, 3, shorts([1, 1, 1]))
+  if (options.iccProfile) push(TAG.IccProfile, 7, options.iccProfile.length, options.iccProfile)
 
   const ifdOffset = 8
   const ifdSize = 2 + entries.length * 12 + 4

@@ -13,7 +13,7 @@ export interface CameraDecodeHints {
   user_qual?: number
   use_camera_wb?: boolean
   use_camera_matrix?: boolean
-  /** 0=raw 1=camera RGB 2=linear sRGB（负片扫描通常保持 1 + 线性 gamma） */
+  /** 旧配置兼容字段；实际输出固定为 sRGB 原色以匹配渲染与导出。 */
   output_color?: number
   highlight?: number
   /** 四色滤镜机型（部分 Foveon/老 Kodak） */
@@ -219,7 +219,7 @@ export function resolveDecodeOutputParams(
     output_bps: 16,
     gamma: [1, 1, 0, 0, 0, 0],
     no_auto_bright: d?.no_auto_bright ?? true,
-    output_color: d?.output_color ?? 1,
+    output_color: 1,
     use_camera_wb: d?.use_camera_wb ?? true,
     use_camera_matrix: d?.use_camera_matrix ? 1 : 0,
     user_qual: d?.user_qual ?? 3,
