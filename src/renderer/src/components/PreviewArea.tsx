@@ -19,6 +19,7 @@ export function PreviewArea() {
   const compare = useEditor((s) => s.compare)
   const eyedropper = useEditor((s) => s.eyedropper)
   const interacting = useEditor((s) => s.interacting)
+  const tab = useEditor((s) => s.tab)
 
   const hostRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -31,6 +32,8 @@ export function PreviewArea() {
   const [dropActive, setDropActive] = useState(false)
 
   const applyCrop = tool !== 'crop'
+  const showDetectionEvidence = tab === 'negative' && tool !== 'holder' && tool !== 'exclude'
+  const validAreaPercent = params.transform.validArea ? params.transform.validArea.w * params.transform.validArea.h * 100 : 100
   const maxRenderPixels = backend === 'gpu' ? GPU_MAX_RENDER_PIXELS : CPU_MAX_RENDER_PIXELS
 
   /** 引擎持有画布，节点挂载后把它接进专用 host，避免与 React 子节点（覆盖层）抢 DOM */
@@ -303,6 +306,21 @@ export function PreviewArea() {
                 onInteractEnd={() => useEditor.getState().endInteract()}
               />
             )}
+            {showDetectionEvidence && geo && params.transform.validArea && (
+              <ValidAreaOverlay
+                validArea={params.transform.validArea}
+                srcW={image.meta.width}
+                srcH={image.meta.height}
+                transform={params.transform}
+                applyCrop={applyCrop}
+                stageW={stage.width}
+                stageH={stage.height}
+                onCommit={() => undefined}
+                onInteractStart={() => undefined}
+                onInteractEnd={() => undefined}
+                readOnly
+              />
+            )}
             {tool === 'heal' && geo && (
               <RepairOverlay
                 strokes={params.repairs}
@@ -334,6 +352,22 @@ export function PreviewArea() {
                 onInteractEnd={() => useEditor.getState().endInteract()}
               />
             )}
+            {showDetectionEvidence && geo && params.transform.excludeAreas.length > 0 && (
+              <ExcludeOverlay
+                areas={params.transform.excludeAreas}
+                srcW={image.meta.width}
+                srcH={image.meta.height}
+                transform={params.transform}
+                applyCrop={applyCrop}
+                stageW={stage.width}
+                stageH={stage.height}
+                onAdd={() => undefined}
+                onRemove={() => undefined}
+                onInteractStart={() => undefined}
+                onInteractEnd={() => undefined}
+                readOnly
+              />
+            )}
           </div>
         ) : (
           <EmptyState />
@@ -349,6 +383,14 @@ export function PreviewArea() {
           {image.meta.degraded && <span className="badge is-warn">降级解码</span>}
           {compare && <span className="badge">对比：原片</span>}
           {eyedropper && <span className="badge">点击画面取片基色</span>}
+        </div>
+      )}
+      {image && tab === 'negative' && (
+        <div className={`detection-summary${params.negative.mode === 'align' ? ' is-review' : ''}`} role="status">
+          <strong>{params.negative.mode === 'align' ? '需要检查：通道对齐' : '已检测片基'}</strong>
+          <span>统计区域 {validAreaPercent.toFixed(1)}%</span>
+          <span>排除区域 {params.transform.excludeAreas.length} 处</span>
+          {params.negative.mode === 'align' && <small>检查肤色与中性色；偏色时使用吸管取样片基。</small>}
         </div>
       )}
     </div>

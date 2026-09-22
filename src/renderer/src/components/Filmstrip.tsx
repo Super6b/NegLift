@@ -20,6 +20,20 @@ export function Filmstrip() {
 
   const selectedCount = useMemo(() => library.filter((i) => i.selected).length, [library])
 
+  const applyPreset = (presetId: string, presetName: string, scope: 'selected' | 'all'): void => {
+    const count = scope === 'all' ? library.length : selectedCount
+    if (count === 0) return
+    const target = scope === 'all' ? `全部 ${count} 张` : `选中的 ${count} 张`
+    if (!window.confirm(`将工作流预设「${presetName}」应用到${target}？\n每张图片会保留自己的裁切与修补记录。`)) return
+    applyWorkflowToLibrary(presetId, scope)
+    setPresetOpen(false)
+  }
+
+  const removeFrame = (id: string, fileName: string): void => {
+    if (!window.confirm(`从胶片条移除「${fileName}」？\n这不会删除磁盘中的原始文件。`)) return
+    removeFromLibrary(id)
+  }
+
   if (library.length === 0 || immersive) return null
 
   return (
@@ -51,20 +65,15 @@ export function Filmstrip() {
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
                   <button
                     className="btn is-ghost"
-                    onClick={() => {
-                      applyWorkflowToLibrary(p.id, 'selected')
-                      setPresetOpen(false)
-                    }}
+                    onClick={() => applyPreset(p.id, p.name, 'selected')}
                     disabled={selectedCount === 0}
                   >
                     选中
                   </button>
                   <button
                     className="btn is-ghost"
-                    onClick={() => {
-                      applyWorkflowToLibrary(p.id, 'all')
-                      setPresetOpen(false)
-                    }}
+                    onClick={() => applyPreset(p.id, p.name, 'all')}
+                    title={`应用到全部 ${library.length} 张`}
                   >
                     全部
                   </button>
@@ -78,41 +87,43 @@ export function Filmstrip() {
         {library.map((item) => {
           const isActive = item.id === activeId
           return (
-            <div
+            <article
               key={item.id}
               className={`filmstrip-item${isActive ? ' is-active' : ''}${item.selected ? ' is-selected' : ''}`}
-              onClick={() => void setActiveLibraryId(item.id)}
-              title={item.meta?.filePath ?? ''}
             >
               <button
+                className="filmstrip-activate"
+                aria-current={isActive ? 'true' : undefined}
+                aria-label={`编辑 ${item.meta?.fileName ?? '未命名图片'}`}
+                onClick={() => void setActiveLibraryId(item.id)}
+                title={item.meta?.filePath ?? ''}
+              >
+                {item.thumbUrl ? (
+                  <img className="filmstrip-thumb" src={item.thumbUrl} alt="" draggable={false} />
+                ) : (
+                  <span className="filmstrip-thumb filmstrip-thumb-empty" aria-hidden>
+                    <ImageIcon size={16} />
+                  </span>
+                )}
+                <span className="filmstrip-name">{item.meta?.fileName ?? ''}</span>
+              </button>
+              <button
                 className={`filmstrip-check${item.selected ? ' is-on' : ''}`}
+                aria-label={item.selected ? '取消选择用于导出' : '选择用于导出'}
                 title={item.selected ? '取消选择（导出）' : '选择（导出）'}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleLibrarySelected(item.id)
-                }}
+                onClick={() => toggleLibrarySelected(item.id)}
               >
                 {item.selected && <Check size={11} />}
               </button>
-              {item.thumbUrl ? (
-                <img className="filmstrip-thumb" src={item.thumbUrl} alt="" draggable={false} />
-              ) : (
-                <div className="filmstrip-thumb filmstrip-thumb-empty">
-                  <ImageIcon size={16} />
-                </div>
-              )}
-              <span className="filmstrip-name">{item.meta?.fileName ?? ''}</span>
               <button
                 className="filmstrip-remove"
+                aria-label={`从胶片条移除 ${item.meta?.fileName ?? '当前图片'}`}
                 title="从胶片条移除"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeFromLibrary(item.id)
-                }}
+                onClick={() => removeFrame(item.id, item.meta?.fileName ?? '当前图片')}
               >
                 <Trash2 size={11} />
               </button>
-            </div>
+            </article>
           )
         })}
       </div>

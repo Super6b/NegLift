@@ -17,6 +17,8 @@ interface Props {
   onRemove: (index: number) => void
   onInteractStart: () => void
   onInteractEnd: () => void
+  /** 只显示排除区域，不接收指针输入 */
+  readOnly?: boolean
 }
 
 /** 拖出小于该尺寸视为点击（用于删除已标记的区域） */
@@ -81,7 +83,8 @@ export function ExcludeOverlay({
   onAdd,
   onRemove,
   onInteractStart,
-  onInteractEnd
+  onInteractEnd,
+  readOnly = false
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -143,6 +146,7 @@ export function ExcludeOverlay({
   }
 
   const begin = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
+    if (readOnly) return
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
@@ -204,12 +208,12 @@ export function ExcludeOverlay({
     <canvas
       className="exclude-layer"
       ref={canvasRef}
-      style={{ width: '100%', height: '100%' }}
-      onPointerDown={begin}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onClick={(e) => e.stopPropagation()}
+      style={{ width: '100%', height: '100%', pointerEvents: readOnly ? 'none' : undefined }}
+      onPointerDown={readOnly ? undefined : begin}
+      onPointerMove={readOnly ? undefined : move}
+      onPointerUp={readOnly ? undefined : end}
+      onPointerCancel={readOnly ? undefined : end}
+      onClick={readOnly ? undefined : (e) => e.stopPropagation()}
     />
   )
 }

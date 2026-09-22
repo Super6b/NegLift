@@ -63,22 +63,23 @@ export function Slider({
             }}
           />
         ) : (
-          <span
+          <button
+            type="button"
             className={`slider-value${modified ? ' is-modified' : ''}`}
-            onDoubleClick={() => {
+            onClick={() => {
               setText(value.toFixed(precision))
               setEditing(true)
             }}
-            title="双击输入数值"
+            title="输入数值"
           >
             {format(value, precision, suffix)}
-          </span>
+          </button>
         )}
         <button
           className="slider-reset"
-          title="重置"
+          aria-label={`重置${label}`}
+          title={`重置${label}`}
           onClick={() => onChange(resetValue, true)}
-          tabIndex={-1}
         >
           ⟲
         </button>

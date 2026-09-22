@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ArrowRight, Minimize2 } from 'lucide-react'
 import { ExportDialog } from './components/ExportDialog'
 import { BatchDialog } from './components/BatchDialog'
@@ -19,6 +19,7 @@ import { PresetsPanel } from './panels/PresetsPanel'
 import { RepairPanel } from './panels/RepairPanel'
 import { TransformPanel } from './panels/TransformPanel'
 import { useEditor, type PanelTab } from './state/store'
+import { createDefaultParams } from '@shared/defaults'
 
 /**
  * 三段式工作流：
@@ -35,6 +36,15 @@ interface StageDef {
   desc: string
   tabs: { id: PanelTab; label: string }[]
   next: StageId | null
+}
+
+type StageStatus = 'idle' | 'ready' | 'review' | 'adjusted'
+
+const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
+  idle: '未处理',
+  ready: '自动结果已就绪',
+  review: '需要检查',
+  adjusted: '已手动调整'
 }
 
 const STAGES: StageDef[] = [
@@ -78,6 +88,7 @@ const STAGES: StageDef[] = [
 ]
 
 const ALL_TABS: { id: PanelTab; label: string }[] = STAGES.flatMap((s) => s.tabs)
+const DEFAULT_GRADE_PARAMS = createDefaultParams()
 
 function stageOf(tab: PanelTab): StageDef {
   return STAGES.find((s) => s.tabs.some((t) => t.id === tab)) ?? STAGES[0]
@@ -116,8 +127,42 @@ export function App() {
   const frameInfo = useEditor((s) => s.frameInfo)
   const toast = useEditor((s) => s.toast)
   const openProgress = useEditor((s) => s.openProgress)
-  const hasImage = useEditor((s) => s.image !== null)
+  const image = useEditor((s) => s.image)
+  const params = useEditor((s) => s.params)
+  const hasImage = image !== null
   const stage = stageOf(tab)
+
+  const getStageStatus = (id: StageId): StageStatus => {
+    if (!image) return 'idle'
+    if (id === 'area') {
+      const current = params.transform.validArea
+      const detected = image.detected.validArea
+      const changed = current && detected
+        ? current.x !== detected.x || current.y !== detected.y || current.w !== detected.w || current.h !== detected.h
+        : current !== detected
+      if (changed) return 'adjusted'
+      return current ? 'ready' : 'review'
+    }
+    if (id === 'correct') {
+      const changed = params.negative.base.some((value, index) => value !== image.detected.base[index]) ||
+        params.negative.alignBlack.some((value, index) => value !== image.detected.alignBlack[index]) ||
+        params.negative.alignWhite.some((value, index) => value !== image.detected.alignWhite[index])
+      if (changed) return 'adjusted'
+      return params.negative.mode === 'align' ? 'review' : 'ready'
+    }
+    const graded = JSON.stringify({
+      basic: params.basic,
+      curves: params.curves,
+      hsl: params.hsl,
+      grading: params.grading
+    }) !== JSON.stringify({
+      basic: DEFAULT_GRADE_PARAMS.basic,
+      curves: DEFAULT_GRADE_PARAMS.curves,
+      hsl: DEFAULT_GRADE_PARAMS.hsl,
+      grading: DEFAULT_GRADE_PARAMS.grading
+    })
+    return graded ? 'adjusted' : 'idle'
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -251,6 +296,15 @@ export function App() {
     if (s) useEditor.getState().setTab(s.tabs[0].id)
   }
 
+  const onStageKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? STAGES.length - 1 :
+      (index + (event.key === 'ArrowRight' ? 1 : STAGES.length - 1)) % STAGES.length
+    selectStage(STAGES[next].id)
+    document.getElementById(`workflow-stage-${STAGES[next].id}`)?.focus()
+  }
+
   return (
     <div className={`app${immersive ? ' is-immersive' : ''}`}>
       <TopBar />
@@ -263,25 +317,35 @@ export function App() {
         <aside className="sidepanel">
           {/* 三段工作流主切换 */}
           <div className="workflow-stages" role="tablist" aria-label="调色工作流">
-            {STAGES.map((s, i) => (
-              <div key={s.id} className="workflow-stage-wrap">
-                {i > 0 && <span className="workflow-arrow" aria-hidden>›</span>}
-                <button
-                  role="tab"
-                  aria-selected={s.id === stage.id}
-                  className={`workflow-stage${s.id === stage.id ? ' is-active' : ''}`}
-                  onClick={() => selectStage(s.id)}
-                  title={s.desc}
-                >
-                  <span className="workflow-num">{s.num}</span>
-                  <span className="workflow-label">{s.label}</span>
-                </button>
-              </div>
-            ))}
+            {STAGES.map((s, i) => {
+              const status = getStageStatus(s.id)
+              return (
+                <div key={s.id} className="workflow-stage-wrap">
+                  {i > 0 && <span className="workflow-arrow" aria-hidden>›</span>}
+                  <button
+                    id={`workflow-stage-${s.id}`}
+                    role="tab"
+                    aria-controls="workflow-panel"
+                    aria-selected={s.id === stage.id}
+                    tabIndex={s.id === stage.id ? 0 : -1}
+                    className={`workflow-stage${s.id === stage.id ? ' is-active' : ''}`}
+                    onClick={() => selectStage(s.id)}
+                    onKeyDown={(event) => onStageKeyDown(event, i)}
+                    title={s.desc}
+                  >
+                    <span className="workflow-num">{s.num}</span>
+                    <span className="workflow-label">{s.label}</span>
+                    <span className={`workflow-status is-${status}`}>
+                      {STAGE_STATUS_LABEL[status]}
+                    </span>
+                  </button>
+                </div>
+              )
+            })}
           </div>
 
           {/* 当前阶段说明 + 下一步 */}
-          <div className="workflow-hint">
+          <div id="workflow-panel" role="tabpanel" aria-labelledby={`workflow-stage-${stage.id}`} className="workflow-hint">
             <p className="workflow-desc">{stage.desc}</p>
             {stage.next && (
               <button className="btn is-primary workflow-next" onClick={goNextStage}>

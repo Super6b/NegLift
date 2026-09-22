@@ -22,6 +22,8 @@ interface Props {
   onCommit: (rect: CropRect | null) => void
   onInteractStart: () => void
   onInteractEnd: () => void
+  /** 只显示检测范围，不接收指针输入 */
+  readOnly?: boolean
 }
 
 interface ScreenRect {
@@ -182,7 +184,8 @@ export function ValidAreaOverlay({
   stageH,
   onCommit,
   onInteractStart,
-  onInteractEnd
+  onInteractEnd,
+  readOnly = false
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -289,6 +292,7 @@ export function ValidAreaOverlay({
   }
 
   const begin = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
+    if (readOnly) return
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
@@ -365,11 +369,11 @@ export function ValidAreaOverlay({
     <canvas
       className="valid-area-layer"
       ref={canvasRef}
-      style={{ width: '100%', height: '100%', cursor: 'default' }}
-      onPointerDown={begin}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
+      style={{ width: '100%', height: '100%', cursor: 'default', pointerEvents: readOnly ? 'none' : undefined }}
+      onPointerDown={readOnly ? undefined : begin}
+      onPointerMove={readOnly ? undefined : move}
+      onPointerUp={readOnly ? undefined : end}
+      onPointerCancel={readOnly ? undefined : end}
     />
   )
 }
