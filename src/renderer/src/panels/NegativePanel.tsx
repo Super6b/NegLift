@@ -17,17 +17,16 @@ export function NegativePanel() {
   const tool = useEditor((s) => s.tool)
   const setTool = useEditor((s) => s.setTool)
   const clearExcludeAreas = useEditor((s) => s.clearExcludeAreas)
-  const validArea = params.transform.validArea
+  const hasImage = useEditor((s) => s.image !== null)
   const excludeAreas = params.transform.excludeAreas
   const n = params.negative
-  const areaPercent = validArea ? validArea.w * validArea.h * 100 : 100
   const resultText = n.mode === 'align'
-    ? '需要检查：未检测到片基，已改用通道对齐；请确认肤色和中性色是否自然。'
-    : '自动结果已就绪：已检测片基并完成初始去色罩。'
+    ? '未检测到片基；请检查肤色和中性色。'
+    : '已检测片基'
 
   useEffect(() => {
-    if (n.mode === 'align') setAdvancedOpen(true)
-  }, [n.mode])
+    if (hasImage && n.mode === 'align') setAdvancedOpen(true)
+  }, [hasImage, n.mode])
 
   return (
     <>
@@ -38,6 +37,7 @@ export function NegativePanel() {
           <label className="switch">
             <input
               type="checkbox"
+              aria-label="启用去色罩"
               checked={n.enabled}
               onChange={(e) => update((d) => void (d.negative.enabled = e.target.checked))}
             />
@@ -56,17 +56,10 @@ export function NegativePanel() {
             <Pipette size={14} /> 吸管
           </button>
         </div>
-        <p className={`workflow-result${n.mode === 'align' ? ' is-review' : ''}`} role="status" aria-live="polite">
+        {hasImage && <p className={`workflow-result${n.mode === 'align' ? ' is-review' : ''}`} role="status" aria-live="polite">
           <strong>{resultText}</strong>
-          <span>统计区域 {areaPercent.toFixed(1)}%{excludeAreas.length ? ` · 已排除 ${excludeAreas.length} 处特殊区域` : ''}</span>
-        </p>
-        <p className="hint">
-          【步骤 2 / 3】在有效区域上自动反相作为视觉起点：自动检测按「裁切 → 有效区域 → 排除区」统计片基/黑场/白场。
-          颜色正常后再进「风格调色」；偏色时可切换校正方式或用吸管取样片基。
-          {validArea
-            ? ` 有效区域：${(validArea.w * 100).toFixed(1)}% × ${(validArea.h * 100).toFixed(1)}%。`
-            : ' 有效区域为整幅画面。'}
-        </p>
+          {excludeAreas.length > 0 && <span>已排除 {excludeAreas.length} 处</span>}
+        </p>}
       </div>
 
       <section className="advanced-section">
@@ -77,10 +70,7 @@ export function NegativePanel() {
           aria-controls="negative-advanced"
           onClick={() => setAdvancedOpen((open) => !open)}
         >
-          <span>
-            <strong>高级微调</strong>
-            <small>自动结果偏色、包含齿孔或需要保留更多后期余量时使用</small>
-          </span>
+          <strong>高级微调</strong>
           <ChevronDown className={advancedOpen ? 'is-open' : ''} size={16} aria-hidden />
         </button>
 
@@ -110,13 +100,7 @@ export function NegativePanel() {
               </button>
               {excludeAreas.length > 0 && <span className="meta">已标记 {excludeAreas.length} 处</span>}
             </div>
-            <p className="hint">齿孔、漏光边等纯黑区域会污染统计；标记后只从去色罩统计中剔除。</p>
-          </div>
-
-          <div className="section">
-            <div className="section-head"><span className="section-title">校正方式</span></div>
-            <div className="chips"><button className="chip is-active" disabled>通道对齐</button></div>
-            <p className="hint">统一使用通道对齐；片基反相模式已停用（多数翻拍样片上效果更差）。</p>
+            <p className="hint">仅从统计中排除，不影响画面。</p>
           </div>
 
           <div className="section">
@@ -145,6 +129,7 @@ export function NegativePanel() {
           <Slider
             key={`b${i}`}
             label={BLACK_LABELS[i]}
+            channel={(['r', 'g', 'b'] as const)[i]}
             value={n.alignBlack[i]}
             min={0}
             max={0.5}
@@ -164,6 +149,7 @@ export function NegativePanel() {
           <Slider
             key={`w${i}`}
             label={WHITE_LABELS[i]}
+            channel={(['r', 'g', 'b'] as const)[i]}
             value={n.alignWhite[i]}
             min={0.05}
             max={1}
@@ -179,10 +165,6 @@ export function NegativePanel() {
               }
             />
           ))}
-          <p className="hint">
-            黑场 / 白场取自有效区域内的低分位与高分位。若反色后整体偏色，可微调对应
-            通道的黑场或白场：黑场调低或白场调高都会让该通道变亮。
-          </p>
           <Slider
             label="两端保留（后期余量）"
             value={(n.alignHeadroom ?? 0) * 100}
@@ -200,10 +182,6 @@ export function NegativePanel() {
               }, c)
             }
           />
-          <p className="hint">
-            在显示编码（直方图）域映射到 [保留, 1−保留]，暗部与亮部较均匀回缩，
-            便于曲线/分级再往两端拉。默认 5%。
-          </p>
           </div>
 
           <div className="section">

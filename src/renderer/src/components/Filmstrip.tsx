@@ -109,11 +109,12 @@ export function Filmstrip() {
               </button>
               <button
                 className={`filmstrip-check${item.selected ? ' is-on' : ''}`}
-                aria-label={item.selected ? '取消选择用于导出' : '选择用于导出'}
+                aria-label={`用于导出 ${item.meta?.fileName ?? '未命名图片'}`}
+                aria-pressed={item.selected}
                 title={item.selected ? '取消选择（导出）' : '选择（导出）'}
                 onClick={() => toggleLibrarySelected(item.id)}
               >
-                {item.selected && <Check size={11} />}
+                {item.selected && <Check size={16} strokeWidth={2.5} />}
               </button>
               <button
                 className="filmstrip-remove"

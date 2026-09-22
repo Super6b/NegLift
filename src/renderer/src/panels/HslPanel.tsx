@@ -46,9 +46,10 @@ export function HslPanel() {
             <button
               key={name}
               className={`chip${name === band ? ' is-active' : ''}`}
-              style={{ borderLeftColor: chipColor(name), borderLeftWidth: 3 }}
               onClick={() => setBand(name)}
+              aria-pressed={name === band}
             >
+              <span className="channel-swatch" style={{ backgroundColor: chipColor(name) }} aria-hidden="true" />
               {HSL_BAND_LABEL[name]}
             </button>
           ))}
@@ -86,9 +87,6 @@ export function HslPanel() {
             }
           />
         ))}
-        <p className="hint">
-          HSL 独立调整各色相的颜色倾向，相邻分区之间平滑过渡，适合单独修正肤色、天空或植被的颜色。
-        </p>
       </div>
     </>
   )

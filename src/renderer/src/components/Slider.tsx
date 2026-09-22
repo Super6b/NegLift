@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { RotateCcw } from 'lucide-react'
 
 export interface SliderProps {
   label: string
+  channel?: 'r' | 'g' | 'b'
   value: number
   onChange: (value: number, commit: boolean) => void
   onInteractStart?: () => void
@@ -23,6 +25,7 @@ function format(value: number, precision: number, suffix: string): string {
 
 export function Slider({
   label,
+  channel,
   value,
   onChange,
   onInteractStart,
@@ -49,7 +52,10 @@ export function Slider({
   return (
     <div className="slider">
       <div className="slider-head">
-        <span className="slider-label">{label}</span>
+        <span className="slider-label">
+          {channel && <span className={`channel-swatch is-${channel}`} aria-hidden="true" />}
+          {label}
+        </span>
         {editing ? (
           <input
             className="slider-value"
@@ -81,12 +87,13 @@ export function Slider({
           title={`重置${label}`}
           onClick={() => onChange(resetValue, true)}
         >
-          ⟲
+          <RotateCcw size={12} aria-hidden="true" />
         </button>
       </div>
       <input
         className="slider-input"
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}

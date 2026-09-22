@@ -26,6 +26,7 @@ export function DenoisePanel() {
         <label className="switch">
           <input
             type="checkbox"
+            aria-label="启用降噪"
             checked={d.enabled}
             onChange={(e) => update((draft) => void (draft.denoise.enabled = e.target.checked))}
           />
@@ -66,11 +67,6 @@ export function DenoisePanel() {
         }
       />
 
-      <p className="hint">
-        色彩噪点采用亮度引导的边缘保持滤波，只在 1/4 分辨率的色度通道上处理，
-        亮度细节完整保留；亮度噪点在全分辨率上做轻度平滑。等级 0 为关闭。
-        预览实时生效（显卡渲染），导出使用同一套参数。
-      </p>
     </div>
   )
 }

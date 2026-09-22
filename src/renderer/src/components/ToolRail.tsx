@@ -15,6 +15,7 @@ export function ToolRail() {
       <button
         className={`tool${tool === 'adjust' && !['transform', 'holder', 'negative', 'denoise', 'repair'].includes(tab) ? ' is-active' : ''}`}
         title="调整"
+        disabled={!hasImage}
         onClick={() => {
           setTool('adjust')
           if (['transform', 'holder', 'negative', 'denoise', 'repair'].includes(tab)) {

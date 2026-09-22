@@ -164,10 +164,6 @@ export function TransformPanel() {
             </span>
           )}
         </div>
-        <p className="hint">
-          在预览画面中拖动裁切框改变构图，八个控制点可自由缩放；固定比例时角点与边中点会保持比例。
-          片夹排除请到「片夹」栏目。
-        </p>
       </div>
     </>
   )

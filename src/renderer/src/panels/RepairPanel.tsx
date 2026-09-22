@@ -55,13 +55,7 @@ export function RepairPanel() {
             onChange={(e) => setRepairRadius(Number(e.target.value) / 1000)}
           />
         </div>
-        <p className="hint">
-          【步骤 2 / 3】
-          <b>左键</b>沿灰尘/浮毛拖出路径（可略大于瑕疵）；
-          <b>中键拖动</b>平移画面。
-          路径覆盖区内识别灰尘像素并补全背景，其余画面保留。
-          单击已有蓝标可删除整段笔触。
-        </p>
+        <p className="hint">拖动涂抹瑕疵；单击蓝色标记删除笔触。</p>
       </div>
 
       {spots.length > 0 && (

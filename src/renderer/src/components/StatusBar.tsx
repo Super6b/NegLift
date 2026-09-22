@@ -1,10 +1,5 @@
+import { Maximize2, Minus, Plus } from 'lucide-react'
 import { useEditor } from '../state/store'
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
 
 export function StatusBar() {
   const image = useEditor((s) => s.image)
@@ -16,36 +11,15 @@ export function StatusBar() {
     <footer className="statusbar">
       {image ? (
         <>
-          <span title={image.meta.filePath}>{image.meta.fileName}</span>
+          <span className="status-file" title={image.meta.filePath}>{image.meta.fileName}</span>
           <span className="sep" />
-          <span>
-            原始 {image.meta.width} × {image.meta.height}
+          <span className="status-dim" title={`原始 ${image.meta.width} × ${image.meta.height} · 预览 ${image.previewWidth} × ${image.previewHeight}${image.fullSize ? '' : '（已降采样）'}`}>
+            {frameInfo ? `${frameInfo.width} × ${frameInfo.height}` : `${image.meta.width} × ${image.meta.height}`}
           </span>
-          <span className="sep" />
-          <span title={image.fullSize ? '预览使用原始分辨率' : '图像超出内存上限，预览已降采样'}>
-            预览 {image.previewWidth} × {image.previewHeight}
-            {image.fullSize ? '（全尺寸）' : '（已降采样）'}
-          </span>
-          {frameInfo && (
-            <>
-              <span className="sep" />
-              <span>
-                输出 {frameInfo.width} × {frameInfo.height}
-              </span>
-            </>
-          )}
-          <span className="sep" />
-          <span>{formatSize(image.meta.fileSize)}</span>
-          {image.meta.camera && (
-            <>
-              <span className="sep" />
-              <span>{image.meta.camera}</span>
-            </>
-          )}
           {image.meta.profileName && (
             <>
               <span className="sep" />
-              <span
+              <span className="status-profile"
                 title={
                   image.meta.profileSource === 'user'
                     ? '用户导入的机型优化配置'
@@ -56,32 +30,18 @@ export function StatusBar() {
               </span>
             </>
           )}
-          {image.meta.iso ? (
-            <>
-              <span className="sep" />
-              <span>ISO {image.meta.iso}</span>
-            </>
-          ) : null}
         </>
-      ) : (
-        <span>未打开图片</span>
-      )}
+      ) : null}
 
       <span className="grow" />
 
       {image && (
-        <>
-          {frameInfo && (
-            <>
-              <span>{frameInfo.elapsed.toFixed(0)} ms</span>
-              <span className="sep" />
-            </>
-          )}
-          <button className="btn is-ghost is-icon" title="适应窗口 (Ctrl+0)" onClick={() => setZoom(1)}>
-            <span className="zoom-btn">适应</span>
-          </button>
-          <span className="zoom-value">{Math.round(zoom * 100)}%</span>
-        </>
+        <div className="zoom-controls" role="group" aria-label="预览缩放">
+          <button aria-label="缩小" title="缩小" disabled={zoom <= 0.05} onClick={() => setZoom(zoom / 1.25)}><Minus size={14} /></button>
+          <output className="zoom-value" title="相对适应窗口的缩放比例">{Math.round(zoom * 100)}%</output>
+          <button aria-label="放大" title="放大" disabled={zoom >= 8} onClick={() => setZoom(zoom * 1.25)}><Plus size={14} /></button>
+          <button className={zoom === 1 ? 'is-fit' : ''} aria-label="适应窗口" title="适应窗口 (Ctrl+0)" onClick={() => setZoom(1)}><Maximize2 size={14} /></button>
+        </div>
       )}
     </footer>
   )

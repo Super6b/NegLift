@@ -76,6 +76,7 @@ export function HolderPanel() {
 
   return (
     <>
+      {image && <>
       <div className="section">
         <div className="section-head">
           <span className="section-title">自动识别</span>
@@ -109,75 +110,6 @@ export function HolderPanel() {
             <Scan size={14} /> 识别片夹
           </button>
         </div>
-        <p className="hint">
-          【步骤 1 / 3】先定有效底片范围：片夹与片框黑边不参与去色罩统计。
-          识别后可再进「几何」做旋转裁切；完成后点上方「下一步：自动校正」。
-          {t.validArea
-            ? ` 当前有效区域：${(t.validArea.w * 100).toFixed(1)}% × ${(t.validArea.h * 100).toFixed(1)}%。`
-            : ' 当前使用整幅画面。'}
-        </p>
-      </div>
-
-      <div className="section">
-        <div className="section-head"><span className="section-title">保真采集配置（预览）</span></div>
-        <div className="row">
-          <button className="btn" onClick={() => {
-            const id = `fidelity-${Date.now().toString(36)}`
-            void window.negLift.saveFidelityConfigurationDraft(createFidelityConfigurationDraft(id, new Date().toISOString())).then(() => {
-              setSelectedFidelityId(id); refreshFidelityConfigurations(); notify('已创建保真配置草稿；补全下方记录后保存。')
-            })
-          }}>新建草稿</button>
-          <button className="btn is-ghost" onClick={() => void window.negLift.importFidelityConfigurations().then(refreshFidelityConfigurations)}>导入 JSON…</button>
-          <button className="btn is-ghost" onClick={() => void window.negLift.exportFidelityConfigurations()}>导出 JSON…</button>
-        </div>
-        {fidelityConfigurations.length > 0 && <>
-          <select className="field" value={selectedFidelityId} onChange={(event) => {
-            const selected = fidelityConfigurations.find((item) => item.id === event.target.value)
-            setSelectedFidelityId(event.target.value); setFidelityJson(selected ? JSON.stringify(selected, null, 2) : '')
-          }}>
-            {fidelityConfigurations.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.status === 'active' ? '已激活' : item.status === 'superseded' ? '已被取代' : '草稿'}）</option>)}
-          </select>
-          <textarea className="field" rows={10} value={fidelityJson} onChange={(event) => setFidelityJson(event.target.value)} aria-label="保真采集配置记录" />
-          <div className="row">
-            <button className="btn" disabled={selectedFidelity?.status !== 'draft'} onClick={() => {
-              try {
-                const configuration = JSON.parse(fidelityJson) as FidelityConfiguration
-                void window.negLift.saveFidelityConfigurationDraft(configuration).then(() => { refreshFidelityConfigurations(); notify('已保存保真配置草稿。') })
-              } catch { notify('配置记录不是有效的 JSON。', 'error') }
-            }}>保存草稿</button>
-            <button className="btn is-primary" disabled={selectedFidelity?.status !== 'draft'} onClick={() => void window.negLift.activateFidelityConfiguration(selectedFidelityId).then(() => { refreshFidelityConfigurations(); notify('采集配置已激活，可用于保真导出。') }).catch((error) => notify(error instanceof Error ? error.message : String(error), 'error'))}>激活</button>
-          </div>
-        </>}
-        <p className="hint">已保存 {fidelityConfigurations.length} 个配置。按顺序填写采集条件、片基边/灰阶/色彩目标、测量证据、阈值和视觉质检条件；缺项只能保存为草稿。</p>
-      </div>
-
-      <div className="section">
-        <div className="section-head">
-          <span className="section-title">机型优化配置</span>
-        </div>
-        <div className="row">
-          <button
-            className="btn"
-            onClick={() => {
-              void window.negLift.importCameraProfile().then((r) => {
-                if (!r) return
-                notify(`已导入 ${r.count} 条机型配置，重新打开图片后生效`)
-              })
-            }}
-          >
-            <FileJson size={14} /> 导入 JSON…
-          </button>
-          <button className="btn is-ghost" onClick={() => void window.negLift.openCameraProfileDir()}>
-            <FolderOpen size={14} /> 配置目录
-          </button>
-        </div>
-        <p className="hint">
-          按机身 make/model 匹配解码与去色罩倾向。当前：
-          {image?.meta.profileName
-            ? `「${image.meta.profileName}」（${image.meta.profileSource === 'user' ? '用户' : '内置'}）`
-            : '未匹配，使用全局默认。'}
-          {' '}不同厂商 RAW 的 CFA/矩阵由 LibRaw 处理；此配置覆盖 demosaic 档与去色罩默认等。
-        </p>
       </div>
 
       <div className="section">
@@ -195,16 +127,14 @@ export function HolderPanel() {
             <Frame size={14} /> {holderMode ? '退出手动框选' : '手动框选片夹'}
           </button>
         </div>
-        <p className="hint">
-          进入后在预览上拖动八向手柄框出「有效画面」；该区域只影响片基/对齐统计范围，
-          不改变裁切构图。与「裁切」工具不同。
-        </p>
+        <p className="hint">只影响去色罩统计，不裁切画面。</p>
       </div>
 
       <div className="section">
         <div className="section-head">
           <span className="section-title">边缘裁除</span>
         </div>
+        <div className="inset-grid">
         <Slider
           label="上"
           value={insets.top * 100}
@@ -257,7 +187,7 @@ export function HolderPanel() {
           onInteractEnd={end}
           onChange={(v, c) => setOneInset('right', v / 100, c)}
         />
-        <p className="hint">按边内缩有效区域；自动识别或手动框选后可在这里微调。</p>
+        </div>
       </div>
 
       <div className="section">
@@ -284,11 +214,68 @@ export function HolderPanel() {
           </button>
           {t.excludeAreas.length > 0 && <span className="meta">已标记 {t.excludeAreas.length} 处</span>}
         </div>
-        <p className="hint">
-          齿孔、漏光边等接近纯黑的区域会污染统计。拖拽标记后只从去色罩统计中剔除，画面不受影响；
-          单击已标记区域可删除。
-        </p>
+        <p className="hint">仅从统计中排除；单击标记可删除。</p>
       </div>
+
+      </>}
+      <details className="panel-details">
+        <summary>采集配置</summary>
+        <div className="section">
+          <div className="section-head"><span className="section-title">保真采集配置（预览）</span></div>
+          <div className="row">
+            <button className="btn" onClick={() => {
+              const id = `fidelity-${Date.now().toString(36)}`
+              void window.negLift.saveFidelityConfigurationDraft(createFidelityConfigurationDraft(id, new Date().toISOString())).then(() => {
+                setSelectedFidelityId(id); refreshFidelityConfigurations(); notify('已创建保真配置草稿；补全下方记录后保存。')
+              })
+            }}>新建草稿</button>
+            <button className="btn is-ghost" onClick={() => void window.negLift.importFidelityConfigurations().then(refreshFidelityConfigurations)}>导入 JSON…</button>
+            <button className="btn is-ghost" onClick={() => void window.negLift.exportFidelityConfigurations()}>导出 JSON…</button>
+          </div>
+          {fidelityConfigurations.length > 0 && <>
+            <select className="field" value={selectedFidelityId} onChange={(event) => {
+              const selected = fidelityConfigurations.find((item) => item.id === event.target.value)
+              setSelectedFidelityId(event.target.value); setFidelityJson(selected ? JSON.stringify(selected, null, 2) : '')
+            }}>
+              {fidelityConfigurations.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.status === 'active' ? '已激活' : item.status === 'superseded' ? '已被取代' : '草稿'}）</option>)}
+            </select>
+            <textarea className="field" rows={10} value={fidelityJson} onChange={(event) => setFidelityJson(event.target.value)} aria-label="保真采集配置记录" />
+            <div className="row">
+              <button className="btn" disabled={selectedFidelity?.status !== 'draft'} onClick={() => {
+                try {
+                  const configuration = JSON.parse(fidelityJson) as FidelityConfiguration
+                  void window.negLift.saveFidelityConfigurationDraft(configuration).then(() => { refreshFidelityConfigurations(); notify('已保存保真配置草稿。') })
+                } catch { notify('配置记录不是有效的 JSON。', 'error') }
+              }}>保存草稿</button>
+              <button className="btn is-primary" disabled={selectedFidelity?.status !== 'draft'} onClick={() => void window.negLift.activateFidelityConfiguration(selectedFidelityId).then(() => { refreshFidelityConfigurations(); notify('采集配置已激活，可用于保真导出。') }).catch((error) => notify(error instanceof Error ? error.message : String(error), 'error'))}>激活</button>
+            </div>
+          </>}
+          <p className="hint">缺少测量证据或质检条件时只能保存草稿。</p>
+        </div>
+
+        <div className="section">
+          <div className="section-head">
+            <span className="section-title">机型优化配置</span>
+          </div>
+          <div className="row">
+            <button
+              className="btn"
+              onClick={() => {
+                void window.negLift.importCameraProfile().then((r) => {
+                  if (!r) return
+                  notify(`已导入 ${r.count} 条机型配置，重新打开图片后生效`)
+                })
+              }}
+            >
+              <FileJson size={14} /> 导入 JSON…
+            </button>
+            <button className="btn is-ghost" onClick={() => void window.negLift.openCameraProfileDir()}>
+              <FolderOpen size={14} /> 配置目录
+            </button>
+          </div>
+          {image?.meta.profileName && <span className="meta">当前：{image.meta.profileName}</span>}
+        </div>
+      </details>
     </>
   )
 }

@@ -48,10 +48,7 @@ export function PresetsPanel() {
             <BookmarkPlus size={14} /> 保存
           </button>
         </div>
-        <p className="hint">
-          预设保存当前风格调色（基础、曲线、HSL、分级）与去色罩强度/平衡、降噪；
-          <b>不包含</b>自动检测的片基/模式/几何。可在底部胶片条「应用预设」批量套到选中或全部照片。
-        </p>
+        <p className="hint">不包含片基检测和裁切设置。</p>
       </div>
 
       {customPresets.length > 0 && (

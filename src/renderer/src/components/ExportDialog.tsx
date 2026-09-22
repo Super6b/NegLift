@@ -183,7 +183,6 @@ export function ExportDialog() {
                   全部（{library.length}）
                 </button>
               </div>
-              <p className="hint">在底部胶片条勾选需要导出的照片；多张时使用各自的调色参数。</p>
             </div>
           )}
 
@@ -197,12 +196,12 @@ export function ExportDialog() {
                   key={f.id}
                   className={`chip${f.id === format ? ' is-active' : ''}`}
                   onClick={() => setFormat(f.id)}
+                  title={f.note}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <p className="hint">{spec.note}</p>
           </div>
 
           <div className="section">
@@ -232,7 +231,6 @@ export function ExportDialog() {
                 value={quality}
                 onChange={(e) => setQuality(Number.parseInt(e.target.value, 10))}
               />
-              <p className="hint">质量 ≥ 90 时使用 4:4:4 无色度抽样，最大限度保留色彩细节。</p>
             </div>
           )}
 
@@ -252,9 +250,7 @@ export function ExportDialog() {
                   </button>
                 ))}
               </div>
-              <p className="hint">
-                16 位导出保留完整影调层次，文件更大；8 位兼容性更好。
-              </p>
+              <p className="hint">16 位保留更多影调，文件更大。</p>
             </div>
           )}
 
@@ -318,9 +314,7 @@ export function ExportDialog() {
               <span className="section-title">保存位置</span>
             </div>
             {multi && scope !== 'current' ? (
-              <p className="hint" style={{ marginTop: 0 }}>
-                多张导出时将选择输出目录，文件名为「原名_neglift.扩展名」。
-              </p>
+              <p className="hint" style={{ marginTop: 0 }}>导出时选择目录</p>
             ) : (
               <div className="row">
                 <input className="field" style={{ flex: 1 }} readOnly value={target ?? defaultName} />

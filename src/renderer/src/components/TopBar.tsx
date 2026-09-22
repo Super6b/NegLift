@@ -85,9 +85,9 @@ export function TopBar() {
       <button
         className="btn"
         onClick={() => setBatchOpen(true)}
-        title="简易批处理：按模板批量处理多张底片 (Ctrl+Shift+B)"
+        title="批量处理多张底片 (Ctrl+Shift+B)"
       >
-        <Layers size={14} /> 简易批处理
+        <Layers size={14} /> 批量处理
       </button>
       <button className="btn is-primary" onClick={() => setExportOpen(true)} disabled={!image}>
         <Save size={14} /> 导出

@@ -43,7 +43,9 @@ export function CurvesPanel() {
               key={c.id}
               className={`chip${c.id === channel ? ' is-active' : ''}`}
               onClick={() => setChannel(c.id)}
+              aria-pressed={c.id === channel}
             >
+              <span className={`channel-swatch is-${c.id}`} aria-hidden="true" />
               {c.label}
             </button>
           ))}
@@ -65,10 +67,7 @@ export function CurvesPanel() {
             }, commit)
           }
         />
-        <p className="hint">
-          单击空白添加控制点，拖动调整；右键删除中间点。
-          <b>两端端点可拖动</b>（改黑场/白场水平与输出高度）。RGB 作用整体亮度，单通道用于校色。
-        </p>
+        <p className="hint">单击添加 · 右键删除 · 拖动端点调整黑白场</p>
       </div>
     </>
   )

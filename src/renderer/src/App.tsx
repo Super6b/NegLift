@@ -1,5 +1,5 @@
 import { useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ArrowRight, Minimize2 } from 'lucide-react'
+import { Contrast, Frame, Minimize2, SlidersHorizontal, type LucideIcon } from 'lucide-react'
 import { ExportDialog } from './components/ExportDialog'
 import { BatchDialog } from './components/BatchDialog'
 import { Filmstrip } from './components/Filmstrip'
@@ -19,7 +19,6 @@ import { PresetsPanel } from './panels/PresetsPanel'
 import { RepairPanel } from './panels/RepairPanel'
 import { TransformPanel } from './panels/TransformPanel'
 import { useEditor, type PanelTab } from './state/store'
-import { createDefaultParams } from '@shared/defaults'
 
 /**
  * 三段式工作流：
@@ -31,70 +30,55 @@ type StageId = 'area' | 'correct' | 'grade'
 
 interface StageDef {
   id: StageId
-  num: string
   label: string
-  desc: string
+  icon: LucideIcon
   tabs: { id: PanelTab; label: string }[]
-  next: StageId | null
-}
-
-type StageStatus = 'idle' | 'ready' | 'review' | 'adjusted'
-
-const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
-  idle: '未处理',
-  ready: '自动结果已就绪',
-  review: '需要检查',
-  adjusted: '已手动调整'
 }
 
 const STAGES: StageDef[] = [
   {
     id: 'area',
-    num: '1',
     label: '有效区域',
-    desc: '自动识别或手动划定底片有效范围，排除片夹与黑边，为后续校色提供干净统计区。',
+    icon: Frame,
     tabs: [
       { id: 'holder', label: '片夹' },
       { id: 'transform', label: '几何' }
-    ],
-    next: 'correct'
+    ]
   },
   {
     id: 'correct',
-    num: '2',
     label: '自动校正',
-    desc: '自动检测去色罩只提供视觉起点，不代表实测色彩准确；必要时可手动调整。',
+    icon: Contrast,
     tabs: [
       { id: 'negative', label: '去色罩' },
       { id: 'repair', label: '除尘' },
       { id: 'denoise', label: '降噪' }
-    ],
-    next: 'grade'
+    ]
   },
   {
     id: 'grade',
-    num: '3',
     label: '风格调色',
-    desc: '在自动校正的视觉起点上做基础、曲线、HSL、分级与预设，进行风格化创作。',
+    icon: SlidersHorizontal,
     tabs: [
       { id: 'basic', label: '基础' },
       { id: 'curves', label: '曲线' },
       { id: 'hsl', label: 'HSL' },
       { id: 'grading', label: '分级' },
       { id: 'presets', label: '预设' }
-    ],
-    next: null
+    ]
   }
 ]
 
 const ALL_TABS: { id: PanelTab; label: string }[] = STAGES.flatMap((s) => s.tabs)
-const DEFAULT_GRADE_PARAMS = createDefaultParams()
 
 function stageOf(tab: PanelTab): StageDef {
   return STAGES.find((s) => s.tabs.some((t) => t.id === tab)) ?? STAGES[0]
 }
 
-function PanelContent({ tab }: { tab: PanelTab }) {
+function PanelContent({ tab, hasImage }: { tab: PanelTab; hasImage: boolean }) {
+  if (!hasImage && tab !== 'holder') {
+    return <p className="panel-empty">导入底片后可调整</p>
+  }
   switch (tab) {
     case 'holder':
       return <HolderPanel />
@@ -127,42 +111,8 @@ export function App() {
   const frameInfo = useEditor((s) => s.frameInfo)
   const toast = useEditor((s) => s.toast)
   const openProgress = useEditor((s) => s.openProgress)
-  const image = useEditor((s) => s.image)
-  const params = useEditor((s) => s.params)
-  const hasImage = image !== null
+  const hasImage = useEditor((s) => s.image !== null)
   const stage = stageOf(tab)
-
-  const getStageStatus = (id: StageId): StageStatus => {
-    if (!image) return 'idle'
-    if (id === 'area') {
-      const current = params.transform.validArea
-      const detected = image.detected.validArea
-      const changed = current && detected
-        ? current.x !== detected.x || current.y !== detected.y || current.w !== detected.w || current.h !== detected.h
-        : current !== detected
-      if (changed) return 'adjusted'
-      return current ? 'ready' : 'review'
-    }
-    if (id === 'correct') {
-      const changed = params.negative.base.some((value, index) => value !== image.detected.base[index]) ||
-        params.negative.alignBlack.some((value, index) => value !== image.detected.alignBlack[index]) ||
-        params.negative.alignWhite.some((value, index) => value !== image.detected.alignWhite[index])
-      if (changed) return 'adjusted'
-      return params.negative.mode === 'align' ? 'review' : 'ready'
-    }
-    const graded = JSON.stringify({
-      basic: params.basic,
-      curves: params.curves,
-      hsl: params.hsl,
-      grading: params.grading
-    }) !== JSON.stringify({
-      basic: DEFAULT_GRADE_PARAMS.basic,
-      curves: DEFAULT_GRADE_PARAMS.curves,
-      hsl: DEFAULT_GRADE_PARAMS.hsl,
-      grading: DEFAULT_GRADE_PARAMS.grading
-    })
-    return graded ? 'adjusted' : 'idle'
-  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -290,12 +240,6 @@ export function App() {
     if (!still) useEditor.getState().setTab(s.tabs[0].id)
   }
 
-  const goNextStage = (): void => {
-    if (!stage.next) return
-    const s = STAGES.find((x) => x.id === stage.next)
-    if (s) useEditor.getState().setTab(s.tabs[0].id)
-  }
-
   const onStageKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
@@ -303,6 +247,16 @@ export function App() {
       (index + (event.key === 'ArrowRight' ? 1 : STAGES.length - 1)) % STAGES.length
     selectStage(STAGES[next].id)
     document.getElementById(`workflow-stage-${STAGES[next].id}`)?.focus()
+  }
+
+  const onSubtabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? stage.tabs.length - 1 :
+      (index + (event.key === 'ArrowRight' ? 1 : stage.tabs.length - 1)) % stage.tabs.length
+    const target = stage.tabs[next].id
+    useEditor.getState().setTab(target)
+    document.getElementById(`workflow-subtab-${target}`)?.focus()
   }
 
   return (
@@ -317,51 +271,36 @@ export function App() {
         <aside className="sidepanel">
           {/* 三段工作流主切换 */}
           <div className="workflow-stages" role="tablist" aria-label="调色工作流">
-            {STAGES.map((s, i) => {
-              const status = getStageStatus(s.id)
-              return (
-                <div key={s.id} className="workflow-stage-wrap">
-                  {i > 0 && <span className="workflow-arrow" aria-hidden>›</span>}
-                  <button
-                    id={`workflow-stage-${s.id}`}
-                    role="tab"
-                    aria-controls="workflow-panel"
-                    aria-selected={s.id === stage.id}
-                    tabIndex={s.id === stage.id ? 0 : -1}
-                    className={`workflow-stage${s.id === stage.id ? ' is-active' : ''}`}
-                    onClick={() => selectStage(s.id)}
-                    onKeyDown={(event) => onStageKeyDown(event, i)}
-                    title={s.desc}
-                  >
-                    <span className="workflow-num">{s.num}</span>
-                    <span className="workflow-label">{s.label}</span>
-                    <span className={`workflow-status is-${status}`}>
-                      {STAGE_STATUS_LABEL[status]}
-                    </span>
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* 当前阶段说明 + 下一步 */}
-          <div id="workflow-panel" role="tabpanel" aria-labelledby={`workflow-stage-${stage.id}`} className="workflow-hint">
-            <p className="workflow-desc">{stage.desc}</p>
-            {stage.next && (
-              <button className="btn is-primary workflow-next" onClick={goNextStage}>
-                下一步：{STAGES.find((x) => x.id === stage.next)?.label}
-                <ArrowRight size={13} />
+            {STAGES.map((s, i) => (
+              <button key={s.id}
+                id={`workflow-stage-${s.id}`}
+                role="tab"
+                aria-controls="workflow-panel"
+                aria-selected={s.id === stage.id}
+                tabIndex={s.id === stage.id ? 0 : -1}
+                className={`workflow-stage${s.id === stage.id ? ' is-active' : ''}`}
+                onClick={() => selectStage(s.id)}
+                onKeyDown={(event) => onStageKeyDown(event, i)}
+              >
+                <s.icon size={14} strokeWidth={1.8} aria-hidden="true" />
+                <span className="workflow-label">{s.label}</span>
               </button>
-            )}
+            ))}
           </div>
 
           {/* 阶段内子页签 */}
-          <div className="tabs">
-            {stage.tabs.map((t) => (
+          <div className="tabs" role="tablist" aria-label={`${stage.label}工具`}>
+            {stage.tabs.map((t, i) => (
               <button
                 key={t.id}
+                id={`workflow-subtab-${t.id}`}
+                role="tab"
+                aria-controls="workflow-panel"
+                aria-selected={t.id === tab}
+                tabIndex={t.id === tab ? 0 : -1}
                 className={`tab${t.id === tab ? ' is-active' : ''}`}
                 onClick={() => useEditor.getState().setTab(t.id)}
+                onKeyDown={(event) => onSubtabKeyDown(event, i)}
               >
                 {t.label}
               </button>
@@ -373,8 +312,8 @@ export function App() {
               <HistogramView data={frameInfo?.histogram ?? null} />
             </div>
           )}
-          <div className="panel-body">
-            <PanelContent tab={tab} />
+          <div id="workflow-panel" role="tabpanel" aria-labelledby={`workflow-stage-${stage.id} workflow-subtab-${tab}`} className="panel-body">
+            <PanelContent tab={tab} hasImage={hasImage} />
           </div>
         </aside>
       </div>

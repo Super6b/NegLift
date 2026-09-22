@@ -134,11 +134,6 @@ export function BatchDialog() {
         </div>
 
         <div className="modal-body">
-          <p className="hint" style={{ marginTop: 0 }}>
-            对多张底片依次执行：自动片夹有效区 → 自动去色罩 → 套用当前风格（基础/曲线/HSL/分级）→ 导出。
-            每张独立检测，互不影响当前编辑中的图片。
-          </p>
-
           <div className="section">
             <div className="section-head">
               <span className="section-title">源文件</span>

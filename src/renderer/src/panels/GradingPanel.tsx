@@ -55,7 +55,6 @@ export function GradingPanel() {
             />
           ))}
         </div>
-        <p className="hint">拖动色轮为对应影调区域叠加色彩，双击色轮复位；中心为中性。</p>
       </div>
 
       <div className="section">
@@ -86,7 +85,6 @@ export function GradingPanel() {
             }, c)
           }
         />
-        <p className="hint">混合控制三个影调区域之间的过渡柔和度；平衡决定分界点偏向阴影还是高光。</p>
       </div>
     </>
   )

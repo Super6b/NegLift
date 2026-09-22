@@ -10,6 +10,7 @@ import { CropOverlay } from './CropOverlay'
 import { ExcludeOverlay } from './ExcludeOverlay'
 import { RepairOverlay } from './RepairOverlay'
 import { ValidAreaOverlay } from './ValidAreaOverlay'
+import { previewContentSize } from './previewContentSize'
 
 export function PreviewArea() {
   const image = useEditor((s) => s.image)
@@ -33,7 +34,6 @@ export function PreviewArea() {
 
   const applyCrop = tool !== 'crop'
   const showDetectionEvidence = tab === 'negative' && tool !== 'holder' && tool !== 'exclude'
-  const validAreaPercent = params.transform.validArea ? params.transform.validArea.w * params.transform.validArea.h * 100 : 100
   const maxRenderPixels = backend === 'gpu' ? GPU_MAX_RENDER_PIXELS : CPU_MAX_RENDER_PIXELS
 
   /** 引擎持有画布，节点挂载后把它接进专用 host，避免与 React 子节点（覆盖层）抢 DOM */
@@ -45,7 +45,10 @@ export function PreviewArea() {
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const update = (): void => setViewport({ w: el.clientWidth, h: el.clientHeight })
+    const update = (): void => {
+      const { w, h } = previewContentSize(el)
+      setViewport((prev) => prev.w === w && prev.h === h ? prev : { w, h })
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(el)
@@ -209,8 +212,7 @@ export function PreviewArea() {
       const er = el.getBoundingClientRect()
       if (sr.width < 1 || sr.height < 1) return
 
-      const pad = 36 // 上下左右 padding 约 18*2
-      const fits = sr.width + pad <= er.width && sr.height + pad <= er.height
+      const fits = sr.width <= viewport.w && sr.height <= viewport.h
       if (fits) {
         // 完整放入视口：交给 margin:auto 水平/垂直居中，清掉残留滚动
         el.scrollLeft = 0
@@ -374,23 +376,11 @@ export function PreviewArea() {
         )}
       </div>
 
-      {image && (
+      {image && (image.meta.degraded || compare || eyedropper) && (
         <div className="preview-badge">
-          <span className="badge" title={backend === 'gpu' ? '预览由显卡渲染' : '预览由 CPU 渲染'}>
-            {backend === 'gpu' ? 'GPU 渲染' : 'CPU 渲染'}
-          </span>
-          {image.meta.isRaw && <span className="badge is-raw">RAW {image.meta.bitsPerSample}bit</span>}
           {image.meta.degraded && <span className="badge is-warn">降级解码</span>}
           {compare && <span className="badge">对比：原片</span>}
           {eyedropper && <span className="badge">点击画面取片基色</span>}
-        </div>
-      )}
-      {image && tab === 'negative' && (
-        <div className={`detection-summary${params.negative.mode === 'align' ? ' is-review' : ''}`} role="status">
-          <strong>{params.negative.mode === 'align' ? '需要检查：通道对齐' : '已检测片基'}</strong>
-          <span>统计区域 {validAreaPercent.toFixed(1)}%</span>
-          <span>排除区域 {params.transform.excludeAreas.length} 处</span>
-          {params.negative.mode === 'align' && <small>检查肤色与中性色；偏色时使用吸管取样片基。</small>}
         </div>
       )}
     </div>
@@ -401,16 +391,10 @@ function EmptyState() {
   return (
     <div className="empty">
       <ImageIcon size={44} strokeWidth={1.2} />
-      <h2>拖入照片开始调色</h2>
-      <p>将 RAW 或常见图像文件拖到此处，或点击下方按钮选择文件。</p>
+      <h2>拖入底片</h2>
       <button className="btn is-primary" onClick={() => void useEditor.getState().openDialog()}>
         <FolderOpen size={15} /> 打开图片
       </button>
-      <div className="formats">
-        支持 RAW：CR2 / CR3 / NEF / NRW / ARW / SR2 / RAF / RW2 / ORF / PEF / DNG / RWL / SRW / 3FR / IIQ 等
-        <br />
-        支持图像：JPEG / PNG / TIFF / WebP / GIF / AVIF / HEIC / BMP
-      </div>
     </div>
   )
 }
