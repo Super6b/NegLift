@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs'
+import { createReadStream } from 'node:fs'
+import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import type { ExportOptions } from '@shared/types'
 import { encodeBmp } from '../decode/bmp'
@@ -66,10 +68,22 @@ export async function encodeAndWrite(input: EncodeInput): Promise<number> {
 
 /** The image was created exclusively; do not leave an untraceable derivative if the sidecar fails. */
 export async function writeFidelityProvenance(filePath: string, provenance: string): Promise<void> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null
   try {
-    await fs.writeFile(`${filePath}.provenance.json`, provenance, { encoding: 'utf8', flag: 'wx' })
+    const hash = createHash('sha256')
+    for await (const chunk of createReadStream(filePath)) hash.update(chunk)
+    const record = { ...JSON.parse(provenance), outputSha256: hash.digest('hex') }
+    handle = await fs.open(`${filePath}.provenance.json`, 'wx')
+    await handle.writeFile(JSON.stringify(record), 'utf8')
   } catch (error) {
-    await fs.unlink(filePath)
+    if (handle) {
+      await handle.close().catch(() => undefined)
+      handle = null
+      await fs.unlink(`${filePath}.provenance.json`).catch(() => undefined)
+    }
+    await fs.unlink(filePath).catch(() => undefined)
     throw error
+  } finally {
+    await handle?.close()
   }
 }

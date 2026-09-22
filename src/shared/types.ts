@@ -225,6 +225,8 @@ export interface Histogram {
 
 /** 从解码结果中提取的元信息 */
 export interface ImageMeta {
+  /** Saved verified positive TIFF: never run negative conversion on import. */
+  isFidelityPositive?: boolean
   fileName: string
   filePath: string
   fileSize: number

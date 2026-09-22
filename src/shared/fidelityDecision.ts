@@ -18,6 +18,7 @@ export interface FidelityDecisionInput {
   params: EditParams
   now: string
   shortCheckPassed?: boolean
+  parent?: ParentFidelityReference | null
 }
 
 export interface FidelityDecision {
@@ -37,34 +38,17 @@ export interface ParentFidelityReference {
 const DEFAULT = createDefaultParams()
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
-/** 读取父导出嵌入的最小保真溯源信息；损坏或非保真数据一律忽略。 */
-export function parentFidelityReference(text: string): ParentFidelityReference | null {
-  try {
-    const value: unknown = JSON.parse(text)
-    if (!value || typeof value !== 'object') return null
-    const record = value as { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown } }
-    const status = record.fidelity?.status
-    if (
-      typeof record.sourcePath !== 'string' ||
-      typeof record.sourceSha256 !== 'string' ||
-      !['practical', 'trial', 'verified-user-attested', 'unverified', 'restoration'].includes(String(status))
-    ) return null
-    return { sourcePath: record.sourcePath, sourceSha256: record.sourceSha256, status: status as FidelityExportStatus }
-  } catch {
-    return null
-  }
-}
-
 /** A saved restoration can be compared only with its recorded, verified parent. */
-export function restorationParentReference(text: string): { path: string; sha256: string } | null {
+export function restorationParentReference(text: string): { path: string; sha256: string; childSha256: string } | null {
   try {
-    const record = JSON.parse(text) as { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown; parent?: { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown } } } }
+    const record = JSON.parse(text) as { sourcePath?: unknown; sourceSha256?: unknown; outputSha256?: unknown; fidelity?: { status?: unknown; parent?: { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown } } } }
     const parent = record?.fidelity?.parent
     if (record?.fidelity?.status !== 'restoration' || parent?.fidelity?.status !== 'verified-user-attested' ||
       typeof parent.sourcePath !== 'string' || !parent.sourcePath ||
       typeof parent.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(parent.sourceSha256) ||
-      record.sourcePath !== parent.sourcePath || record.sourceSha256 !== parent.sourceSha256) return null
-    return { path: parent.sourcePath, sha256: parent.sourceSha256 }
+      record.sourcePath !== parent.sourcePath || record.sourceSha256 !== parent.sourceSha256 ||
+      typeof record.outputSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(record.outputSha256)) return null
+    return { path: parent.sourcePath, sha256: parent.sourceSha256, childSha256: record.outputSha256 }
   } catch {
     return null
   }
@@ -102,7 +86,9 @@ function expired(configuration: FidelityConfiguration, now: string): string[] {
 
 export function decideFidelityExport(input: FidelityDecisionInput): FidelityDecision {
   if (input.mode === 'practical') return { status: 'practical', reasons: [], verified: false, needsUnverifiedSuffix: false, requiresTiff16: false }
-  if (isRestorationParams(input.params)) return { status: 'restoration', reasons: ['包含创意调色、降噪或修补处理'], verified: false, needsUnverifiedSuffix: false, requiresTiff16: false }
+  if (isRestorationParams(input.params)) return input.parent?.status === 'verified-user-attested' && input.source.path === input.parent.sourcePath && input.source.sha256 === input.parent.sourceSha256
+    ? { status: 'restoration', reasons: ['包含创意调色、降噪或修补处理'], verified: false, needsUnverifiedSuffix: false, requiresTiff16: false }
+    : { status: 'unverified', reasons: ['缺少已验证保真派生文件父版'], verified: false, needsUnverifiedSuffix: true, requiresTiff16: true }
   if (!input.configuration) return { status: 'trial', reasons: ['未选择已验证采集配置'], verified: false, needsUnverifiedSuffix: true, requiresTiff16: true }
 
   const reasons = configurationIssues(input.configuration)

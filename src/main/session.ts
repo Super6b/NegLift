@@ -12,6 +12,7 @@ import type {
 import { detectHolderRect, detectNegative, sampleAt } from '@shared/pipeline/analysis'
 import { decimateLinear, detectionRegion, downsampleLinear } from '@shared/pipeline'
 import { decodeImage, type DecodeResult } from './decode'
+import { fidelityDerivative } from './verifiedParent'
 
 /**
  * 预览（交给渲染进程 / GPU 纹理）的上限。
@@ -146,6 +147,7 @@ export async function openSession(filePath: string, onProgress?: ProgressReporte
   }
 
   const meta: ImageMeta = {
+    isFidelityPositive: !!(await fidelityDerivative(filePath)),
     fileName: basename(filePath),
     filePath,
     fileSize,

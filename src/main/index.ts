@@ -1,6 +1,5 @@
 import { join, basename as pathBasename } from 'node:path'
 import { promises as fs } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { cpus } from 'node:os'
 import {
   app,
@@ -28,11 +27,12 @@ import type {
 } from '@shared/types'
 import { computeGeometry, renderLinear, sourceToRegion } from '@shared/pipeline'
 import { migrateExportOptions } from '@shared/exportFormat'
-import { decideFidelityExport, parentFidelityReference, restorationParentReference, type FidelityDecision } from '@shared/fidelityDecision'
+import { decideFidelityExport, isRestorationParams, restorationParentReference, type FidelityDecision } from '@shared/fidelityDecision'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
 import { RAW_EXTENSIONS, RASTER_EXTENSIONS, BMP_EXTENSIONS, decodeImage } from './decode'
 import { cancelBatch, runBatch } from './batch'
 import { encodeAndWrite, writeFidelityProvenance } from './export'
+import { hashFile, verifiedParent } from './verifiedParent'
 import {
   applyModelRepairs,
   ensureModelsDir,
@@ -290,10 +290,6 @@ async function applyRepairAndEncode(
   })
 }
 
-async function hashFile(filePath: string): Promise<string | null> {
-  try { return createHash('sha256').update(await fs.readFile(filePath)).digest('hex') } catch { return null }
-}
-
 function withUnverifiedSuffix(filePath: string, decision: FidelityDecision): string {
   if (!decision.needsUnverifiedSuffix || /_unverified\.[^.]+$/i.test(filePath)) return filePath
   return filePath.replace(/(\.[^.\\/]+)$/, '_unverified$1')
@@ -310,27 +306,29 @@ async function fidelityExport(
     ? (await fidelityConfigurations().list()).find((item) => item.id === requested.configurationId) ?? null
     : null
   const sourceSha256 = requested?.mode === 'fidelity' ? await hashFile(sourcePath) : null
+  let parent: { sourcePath: string; sourceSha256: string; fidelity: { status: 'verified-user-attested' } } | null = null
+  let changes: Partial<EditParams> | null = null
+  if (requested?.mode === 'fidelity' && isRestorationParams(params) && sourceSha256) {
+    const prior = await verifiedParent(sourcePath, sourceSha256)
+    if (prior) {
+      parent = { sourcePath, sourceSha256, fidelity: { status: 'verified-user-attested' } }
+      changes = Object.fromEntries(Object.entries(params).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(prior.params[key as keyof EditParams]))) as Partial<EditParams>
+    }
+  }
   const decision = decideFidelityExport({
     mode: requested?.mode ?? 'practical', configuration, params,
     source: { path: sourcePath, isRaw, sha256: sourceSha256 },
-    now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed
+    now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed,
+    parent: parent ? { sourcePath, sourceSha256: parent.sourceSha256, status: 'verified-user-attested' } : null
   })
+  if (requested?.mode === 'fidelity' && isRestorationParams(params) && !parent) {
+    throw new Error('修复派生文件需要已验证的父版及其完整谱系记录；请重新导出父版，或使用实用转换。')
+  }
   const output = { ...options, filePath: withUnverifiedSuffix(options.filePath, decision) }
   if (decision.requiresTiff16) { output.format = 'tiff'; output.tiffBitDepth = 16 }
-  let parent: unknown = null
-  if (decision.status === 'restoration') {
-    try {
-      const prior = parentFidelityReference(await fs.readFile(`${sourcePath}.provenance.json`, 'utf8'))
-      parent = prior?.status === 'verified-user-attested'
-        ? { sourcePath, sourceSha256: sourceSha256 ?? prior.sourceSha256, fidelity: { status: prior.status } } : null
-    } catch {
-      // ponytail: no asset catalogue; import a prior TIFF plus its sidecar to preserve a parent link.
-      parent = null
-    }
-  }
   const provenance = JSON.stringify({
     schemaVersion: 1, sourcePath, sourceSha256,
-    fidelity: { status: decision.status, reasons: decision.reasons, configuration, requested, parent }, params
+    fidelity: { status: decision.status, reasons: decision.reasons, configuration, requested, parent, changes }, params
   })
   return { decision, options: output, provenance }
 }
@@ -401,7 +399,8 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.restorationComparison, async (_event, filePath: string) => {
     try {
       const parent = restorationParentReference(await fs.readFile(`${filePath}.provenance.json`, 'utf8'))
-      if (!parent || (await hashFile(parent.path))?.toLowerCase() !== parent.sha256.toLowerCase()) return null
+      if (!parent || (await hashFile(parent.path))?.toLowerCase() !== parent.sha256.toLowerCase() ||
+        (await hashFile(filePath))?.toLowerCase() !== parent.childSha256.toLowerCase()) return null
       const preview = async (path: string): Promise<string> =>
         `data:image/jpeg;base64,${(await sharp(path).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).toColourspace('srgb').jpeg({ quality: 85 }).toBuffer()).toString('base64')}`
       return { parent: await preview(parent.path), child: await preview(filePath) }

@@ -49,6 +49,7 @@ export interface ToastMessage {
 /** 胶片条中的一页：完整预览 + 各自参数与撤销栈 */
 export interface LibraryItem {
   id: string
+  restorationPath?: string | null
   /** 完整载荷；非当前张在多选导入时可为 null，切换时再从磁盘加载 */
   image: OpenedImage | null
   meta: ImageMeta
@@ -283,14 +284,14 @@ function regionKey(t: TransformParams): string {
  * 把自动检测结果写入参数。
  * 片基与通道对齐两组数据同时写入，用户切换校正模式时无需重新检测。
  */
-function applyDetected(params: EditParams, detected: DetectResult): void {
+function applyDetected(params: EditParams, detected: DetectResult, positive = false): void {
   params.negative.mode = detected.mode
   params.negative.base = [...detected.base] as Vec3
   params.negative.tRef = detected.tRef
   params.negative.strength = detected.suggestedStrength
   params.negative.alignBlack = [...detected.alignBlack] as Vec3
   params.negative.alignWhite = [...detected.alignWhite] as Vec3
-  params.negative.enabled = true
+  params.negative.enabled = !positive
 }
 
 export const useEditor = create<EditorState>((set, get) => {
@@ -321,8 +322,8 @@ export const useEditor = create<EditorState>((set, get) => {
         const batch = loaded as OpenBatchResult
         added = batch.entries.map((entry: LibraryOpenEntry) => {
           const params = createDefaultParams()
-          applyDetected(params, entry.detected)
-          params.transform.validArea = entry.detected.validArea ? { ...entry.detected.validArea } : null
+          applyDetected(params, entry.detected, entry.meta.isFidelityPositive)
+          params.transform.validArea = !entry.meta.isFidelityPositive && entry.detected.validArea ? { ...entry.detected.validArea } : null
           const isActive = batch.active?.meta.filePath === entry.meta.filePath
           const linearThumb = entry.linearThumb
           const lw = entry.linearThumbWidth ?? 0
@@ -357,8 +358,8 @@ export const useEditor = create<EditorState>((set, get) => {
         // 单张 OpenedImage
         const image = loaded as OpenedImage
         const params = createDefaultParams()
-        applyDetected(params, image.detected)
-        params.transform.validArea = image.detected.validArea ? { ...image.detected.validArea } : null
+        applyDetected(params, image.detected, image.meta.isFidelityPositive)
+        params.transform.validArea = !image.meta.isFidelityPositive && image.detected.validArea ? { ...image.detected.validArea } : null
         const { data, w, h } = extractLinearThumb(image)
         const item: LibraryItem = {
           id: nextLibId(),
@@ -531,7 +532,7 @@ export const useEditor = create<EditorState>((set, get) => {
           past: [...fresh.past],
           future: [...fresh.future],
           compare: false,
-          restorationPath: null,
+          restorationPath: fresh.restorationPath ?? null,
           activePresetId: null,
           zoom: 1
         })
@@ -568,7 +569,7 @@ export const useEditor = create<EditorState>((set, get) => {
         library: nextLibrary,
         activeId: newActive.id,
         image: newActive.image,
-        restorationPath: null,
+        restorationPath: newActive.restorationPath ?? null,
         params: cloneParams(newActive.params),
         past: [...newActive.past],
         future: [...newActive.future]
@@ -624,8 +625,8 @@ export const useEditor = create<EditorState>((set, get) => {
       const { params, image } = get()
       const next = createDefaultParams()
       if (image) {
-        applyDetected(next, image.detected)
-        next.transform.validArea = image.detected.validArea ? { ...image.detected.validArea } : null
+        applyDetected(next, image.detected, image.meta.isFidelityPositive)
+        next.transform.validArea = !image.meta.isFidelityPositive && image.detected.validArea ? { ...image.detected.validArea } : null
       }
       commitFrom(params)
       set({ params: next, activePresetId: null })
@@ -642,6 +643,7 @@ export const useEditor = create<EditorState>((set, get) => {
      * `silent` 用于裁切等操作的连带重算：不提示、不写撤销栈，避免打断用户。
      */
     detect: async (silent = false) => {
+      if (get().image?.meta.isFidelityPositive) return
       const result = await window.negLift.detectNegative(get().params.transform)
       if (!result) {
         if (!silent) get().notify('自动检测失败：没有可用的图像数据', 'error')
@@ -914,7 +916,10 @@ export const useEditor = create<EditorState>((set, get) => {
     setZoom: (zoom) => set({ zoom: Math.min(8, Math.max(0.05, zoom)) }),
     toggleImmersive: () => set({ immersive: !get().immersive }),
     setCompare: (on) => set({ compare: on }),
-    setRestorationPath: (path) => set({ restorationPath: path }),
+    setRestorationPath: (path) => set((state) => ({
+      restorationPath: path,
+      library: state.library.map((item) => item.id === state.activeId ? { ...item, restorationPath: path } : item)
+    })),
     setEyedropper: (on) => set({ eyedropper: on }),
     setExportOpen: (open) => set({ exportOpen: open }),
     setExporting: (on) => set({ exporting: on }),

@@ -20,6 +20,7 @@ export function TopBar() {
   const restorationPath = useEditor((s) => s.restorationPath)
   const [restoration, setRestoration] = useState<{ parent: string; child: string } | null>(null)
   const [showRestoration, setShowRestoration] = useState(false)
+  const openComparisonRef = useRef<HTMLButtonElement>(null)
   const closeComparisonRef = useRef<HTMLButtonElement>(null)
   const theme = useEditor((s) => s.theme)
   const compare = useEditor((s) => s.compare)
@@ -36,6 +37,16 @@ export function TopBar() {
   const setExportOpen = useEditor((s) => s.setExportOpen)
   const setBatchOpen = useEditor((s) => s.setBatchOpen)
 
+  const openRestorationComparison = async (): Promise<void> => {
+    const path = restorationPath ?? image?.meta.filePath
+    if (!path) return
+    const current = await window.negLift.restorationComparison(path)
+    if (path !== (useEditor.getState().restorationPath ?? useEditor.getState().image?.meta.filePath)) return
+    setRestoration(current)
+    if (current) setShowRestoration(true)
+    else useEditor.getState().notify('父版或修复文件已变化，无法核对谱系', 'error')
+  }
+
   useEffect(() => {
     let current = true
     setRestoration(null)
@@ -47,7 +58,10 @@ export function TopBar() {
   }, [image, restorationPath])
 
   useEffect(() => {
-    if (!showRestoration) return
+    if (!showRestoration) {
+      if (restoration) openComparisonRef.current?.focus()
+      return
+    }
     closeComparisonRef.current?.focus()
     const close = (event: globalThis.KeyboardEvent): void => { if (event.key === 'Escape') setShowRestoration(false) }
     window.addEventListener('keydown', close)
@@ -107,7 +121,7 @@ export function TopBar() {
       <span className="topbar-spacer" />
 
       {restoration && (
-        <button className="btn" title="比较已保存的修复派生文件与已验证父文件" onClick={() => setShowRestoration(true)}>
+        <button ref={openComparisonRef} className="btn" title="比较已保存的修复派生文件与已验证父文件" onClick={() => void openRestorationComparison()}>
           <Columns2 size={14} /> 比较父版
         </button>
       )}

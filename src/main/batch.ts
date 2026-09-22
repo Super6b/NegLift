@@ -6,7 +6,6 @@
  * RAW 解码时间藏进上一张的 CPU 计算里；sharp 使用多线程做 JPEG/PNG 编码。
  */
 import { promises as fs } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type {
   BatchFileResult,
@@ -25,8 +24,9 @@ import { encodeAndWrite, writeFidelityProvenance } from './export'
 import { applyModelRepairs } from './inpaint/model'
 import { sourceToRegion } from '@shared/pipeline'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
-import { decideFidelityExport } from '@shared/fidelityDecision'
+import { decideFidelityExport, isRestorationParams } from '@shared/fidelityDecision'
 import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
+import { fidelityDerivative, hashFile, verifiedParent } from './verifiedParent'
 
 const ANALYSIS_MAX_EDGE = 1600
 
@@ -102,6 +102,10 @@ async function analyzeAndRender(
     template.transform.excludeAreas
   )
   const params = buildParams(template, detected, holder, req)
+  if (await fidelityDerivative(job.filePath)) {
+    params.negative.enabled = false
+    params.transform.validArea = null
+  }
   const geo = computeGeometry(job.decode.width, job.decode.height, params.transform)
   const longEdge = Math.max(geo.outputWidth, geo.outputHeight)
   const scale = req.export.maxDimension ? Math.min(1, req.export.maxDimension / longEdge) : 1
@@ -141,18 +145,25 @@ async function encodeJob(
   configuration: FidelityConfiguration | null
 ): Promise<string> {
   const stem = job.fileName.replace(/\.[^.]+$/, '') || job.fileName
-  const sourceSha256 = req.export.fidelity?.mode === 'fidelity'
-    ? createHash('sha256').update(await fs.readFile(job.filePath)).digest('hex') : null
+  const sourceSha256 = req.export.fidelity?.mode === 'fidelity' ? await hashFile(job.filePath) : null
+  const prior = req.export.fidelity?.mode === 'fidelity' && isRestorationParams(params)
+    ? await verifiedParent(job.filePath, sourceSha256) : null
+  const parent = prior ? { sourcePath: job.filePath, sourceSha256: prior.sha256, fidelity: { status: 'verified-user-attested' as const } } : null
+  const changes = prior ? Object.fromEntries(Object.entries(params).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(prior.params[key as keyof EditParams]))) : null
   const decision = decideFidelityExport({
     mode: req.export.fidelity?.mode ?? 'practical', configuration,
     source: { path: job.filePath, isRaw: job.decode.isRaw, sha256: sourceSha256 }, params,
+    parent: parent ? { sourcePath: job.filePath, sourceSha256: prior!.sha256, status: 'verified-user-attested' } : null,
     now: new Date().toISOString(), shortCheckPassed: req.export.fidelity?.shortCheckPassed
   })
+  if (req.export.fidelity?.mode === 'fidelity' && isRestorationParams(params) && !parent) {
+    throw new Error('修复派生文件需要已验证的父版及其完整谱系记录；请重新导出父版，或使用实用转换。')
+  }
   const format = decision.requiresTiff16 ? 'tiff' : req.export.format
   const suffix = decision.needsUnverifiedSuffix ? '_unverified' : ''
   const outName = `${stem}_neglift${suffix}.${OUT_EXT[format]}`
   const outPath = await uniqueOutputPath(req.outputDir, outName)
-  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration }, params })
+  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration, parent, changes }, params })
   await encodeAndWrite({
     display: rendered.data,
     width: rendered.width,
