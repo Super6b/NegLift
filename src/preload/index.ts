@@ -13,6 +13,7 @@ import type {
 const CHANNEL = {
   openDialog: 'neglift:open-dialog',
   openPath: 'neglift:open-path',
+  restorationComparison: 'neglift:restoration-comparison',
   openProgress: 'neglift:open-progress',
   sampleBase: 'neglift:sample-base',
   detect: 'neglift:detect',
@@ -47,6 +48,7 @@ const CHANNEL = {
 const api: NegLiftApi = {
   openImageDialog: () => ipcRenderer.invoke(CHANNEL.openDialog),
   openImagePath: (filePath: string) => ipcRenderer.invoke(CHANNEL.openPath, filePath),
+  restorationComparison: (filePath: string) => ipcRenderer.invoke(CHANNEL.restorationComparison, filePath),
   // 通过 webUtils 取回拖拽文件的真实磁盘路径，RAW 解码必须依赖路径
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   sampleBase: (u: number, v: number) => ipcRenderer.invoke(CHANNEL.sampleBase, u, v),

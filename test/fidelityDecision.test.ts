@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createDefaultParams } from '../src/shared/defaults'
-import { decideFidelityExport, parentFidelityReference } from '../src/shared/fidelityDecision'
+import { decideFidelityExport, parentFidelityReference, restorationParentReference } from '../src/shared/fidelityDecision'
 import type { FidelityConfiguration } from '../src/shared/fidelityConfiguration'
 
 const now = '2026-09-22T00:00:00.000Z'
@@ -33,4 +33,12 @@ assert.deepEqual(
   { sourcePath: 'E:/exports/parent.tif', sourceSha256: 'b'.repeat(64), status: 'verified-user-attested' }
 )
 assert.equal(parentFidelityReference('not json'), null)
+const parent = { sourcePath: 'E:/exports/parent.tif', sourceSha256: 'b'.repeat(64), fidelity: { status: 'verified-user-attested' } }
+assert.deepEqual(restorationParentReference(JSON.stringify({ sourcePath: parent.sourcePath, sourceSha256: parent.sourceSha256, fidelity: { status: 'restoration', parent } })), {
+  path: parent.sourcePath, sha256: parent.sourceSha256
+})
+assert.equal(restorationParentReference(JSON.stringify({ sourcePath: parent.sourcePath, sourceSha256: parent.sourceSha256, fidelity: { status: 'restoration', parent: { ...parent, fidelity: { status: 'unverified' } } } })), null)
+assert.equal(restorationParentReference(JSON.stringify({ sourcePath: parent.sourcePath, sourceSha256: parent.sourceSha256, fidelity: { status: 'unverified', parent } })), null)
+assert.equal(restorationParentReference(JSON.stringify({ sourcePath: 'wrong.tif', sourceSha256: parent.sourceSha256, fidelity: { status: 'restoration', parent } })), null)
+assert.equal(restorationParentReference('invalid'), null)
 console.log('保真导出决策测试通过')

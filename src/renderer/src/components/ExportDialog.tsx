@@ -100,6 +100,7 @@ export function ExportDialog() {
           notify(result.error ?? '导出失败', 'error')
           return
         }
+        if (result.fidelityStatus === 'restoration' && result.filePath) useEditor.getState().setRestorationPath(result.filePath)
         const size = result.fileSize ? `${(result.fileSize / 1024).toFixed(0)} KB` : ''
         const fidelityNote = result.fidelityStatus && result.fidelityStatus !== 'practical'
           ? ` · ${result.fidelityStatus === 'verified-user-attested' ? '用户确认的验证' : result.fidelityStatus === 'restoration' ? '修复派生文件' : '未验证'}${result.fidelityReasons?.length ? `：${result.fidelityReasons.join('；')}` : ''}` : ''

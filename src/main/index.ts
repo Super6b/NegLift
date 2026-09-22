@@ -28,11 +28,11 @@ import type {
 } from '@shared/types'
 import { computeGeometry, renderLinear, sourceToRegion } from '@shared/pipeline'
 import { migrateExportOptions } from '@shared/exportFormat'
-import { decideFidelityExport, parentFidelityReference, type FidelityDecision } from '@shared/fidelityDecision'
+import { decideFidelityExport, parentFidelityReference, restorationParentReference, type FidelityDecision } from '@shared/fidelityDecision'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
 import { RAW_EXTENSIONS, RASTER_EXTENSIONS, BMP_EXTENSIONS, decodeImage } from './decode'
 import { cancelBatch, runBatch } from './batch'
-import { encodeAndWrite } from './export'
+import { encodeAndWrite, writeFidelityProvenance } from './export'
 import {
   applyModelRepairs,
   ensureModelsDir,
@@ -56,6 +56,7 @@ import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 const CHANNEL = {
   openDialog: 'neglift:open-dialog',
   openPath: 'neglift:open-path',
+  restorationComparison: 'neglift:restoration-comparison',
   openProgress: 'neglift:open-progress',
   sampleBase: 'neglift:sample-base',
   detect: 'neglift:detect',
@@ -250,7 +251,8 @@ async function applyRepairAndEncode(
   decode: { linear: Uint16Array; width: number; height: number },
   params: EditParams,
   options: ExportOptions,
-  provenanceSummary?: string
+  provenanceSummary?: string,
+  exclusive = false
 ): Promise<number> {
   const geo = computeGeometry(decode.width, decode.height, params.transform)
   const longEdge = Math.max(geo.outputWidth, geo.outputHeight)
@@ -283,7 +285,8 @@ async function applyRepairAndEncode(
     width: rendered.width,
     height: rendered.height,
     options,
-    provenanceSummary
+    provenanceSummary,
+    exclusive
   })
 }
 
@@ -318,10 +321,11 @@ async function fidelityExport(
   if (decision.status === 'restoration') {
     try {
       const prior = parentFidelityReference(await fs.readFile(`${sourcePath}.provenance.json`, 'utf8'))
-      parent = prior ? { sourcePath, sourceSha256: sourceSha256 ?? prior.sourceSha256, fidelity: { status: prior.status } } : null
+      parent = prior?.status === 'verified-user-attested'
+        ? { sourcePath, sourceSha256: sourceSha256 ?? prior.sourceSha256, fidelity: { status: prior.status } } : null
     } catch {
       // ponytail: no asset catalogue; import a prior TIFF plus its sidecar to preserve a parent link.
-      parent = { sourcePath, sourceSha256, fidelity: null }
+      parent = null
     }
   }
   const provenance = JSON.stringify({
@@ -394,6 +398,18 @@ function registerIpc(): void {
     return openSession(filePath, reportOpenProgress)
   })
 
+  ipcMain.handle(CHANNEL.restorationComparison, async (_event, filePath: string) => {
+    try {
+      const parent = restorationParentReference(await fs.readFile(`${filePath}.provenance.json`, 'utf8'))
+      if (!parent || (await hashFile(parent.path))?.toLowerCase() !== parent.sha256.toLowerCase()) return null
+      const preview = async (path: string): Promise<string> =>
+        `data:image/jpeg;base64,${(await sharp(path).rotate().resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true }).toColourspace('srgb').jpeg({ quality: 85 }).toBuffer()).toString('base64')}`
+      return { parent: await preview(parent.path), child: await preview(filePath) }
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle(CHANNEL.sampleBase, (_event, u: number, v: number) => {
     return sampleBase(u, v)
   })
@@ -430,8 +446,8 @@ function registerIpc(): void {
       const legacyDng = (options as { format?: unknown }).format === 'dng'
       const migrated = migrateExportOptions(options)
       const prepared = await fidelityExport(session.sourcePath, session.decode.isRaw, params, migrated)
-      const size = await applyRepairAndEncode(session.decode, params, prepared.options, prepared.provenance)
-      if (prepared.decision.status !== 'practical') await fs.writeFile(`${prepared.options.filePath}.provenance.json`, prepared.provenance, 'utf8')
+      const size = await applyRepairAndEncode(session.decode, params, prepared.options, prepared.provenance, prepared.decision.status !== 'practical')
+      if (prepared.decision.status !== 'practical') await writeFidelityProvenance(prepared.options.filePath, prepared.provenance)
       return {
         ok: true,
         filePath: prepared.options.filePath,
@@ -461,8 +477,8 @@ function registerIpc(): void {
         const legacyDng = (options as { format?: unknown }).format === 'dng'
         const migrated = migrateExportOptions({ ...options, filePath: destPath })
         const prepared = await fidelityExport(sourcePath, decode.isRaw, params, migrated)
-        const size = await applyRepairAndEncode(decode, params, prepared.options, prepared.provenance)
-        if (prepared.decision.status !== 'practical') await fs.writeFile(`${prepared.options.filePath}.provenance.json`, prepared.provenance, 'utf8')
+        const size = await applyRepairAndEncode(decode, params, prepared.options, prepared.provenance, prepared.decision.status !== 'practical')
+        if (prepared.decision.status !== 'practical') await writeFidelityProvenance(prepared.options.filePath, prepared.provenance)
         const geo = computeGeometry(decode.width, decode.height, params.transform)
         return {
           ok: true,

@@ -21,7 +21,7 @@ import { cloneParams } from '@shared/defaults'
 import { computeGeometry, decimateLinear, renderLinear } from '@shared/pipeline'
 import { detectHolderRect, detectNegative } from '@shared/pipeline/analysis'
 import { decodeImage, type DecodeResult } from './decode'
-import { encodeAndWrite } from './export'
+import { encodeAndWrite, writeFidelityProvenance } from './export'
 import { applyModelRepairs } from './inpaint/model'
 import { sourceToRegion } from '@shared/pipeline'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
@@ -158,9 +158,10 @@ async function encodeJob(
     width: rendered.width,
     height: rendered.height,
     options: { ...req.export, format, tiffBitDepth: decision.requiresTiff16 ? 16 : req.export.tiffBitDepth, filePath: outPath },
-    provenanceSummary: provenance
+    provenanceSummary: provenance,
+    exclusive: decision.status !== 'practical'
   })
-  if (decision.status !== 'practical') await fs.writeFile(`${outPath}.provenance.json`, provenance, 'utf8')
+  if (decision.status !== 'practical') await writeFidelityProvenance(outPath, provenance)
   return outPath
 }
 

@@ -394,6 +394,8 @@ export interface OpenProgress {
 export interface NegLiftApi {
   openImageDialog(): Promise<OpenBatchResult | null>
   openImagePath(filePath: string): Promise<OpenedImage | null>
+  /** 仅对有完整谱系记录且父文件校验值匹配的修复派生文件返回对比图。 */
+  restorationComparison(filePath: string): Promise<{ parent: string; child: string } | null>
   getPathForFile(file: File): string
   sampleBase(u: number, v: number): Promise<Vec3 | null>
   detectNegative(params: TransformParams): Promise<DetectResult | null>

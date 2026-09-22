@@ -22,6 +22,7 @@ export interface EncodeInput {
   height: number
   options: ExportOptions
   provenanceSummary?: string
+  exclusive?: boolean
 }
 
 /** 按目标格式编码并写入磁盘，返回文件字节数 */
@@ -31,7 +32,7 @@ export async function encodeAndWrite(input: EncodeInput): Promise<number> {
 
   if (format === 'tiff' && tiffBitDepth === 16) {
     const buf = encodeTiff16({ rgb16: display, width, height, dpi, description: input.provenanceSummary })
-    await fs.writeFile(filePath, buf)
+    await fs.writeFile(filePath, buf, { flag: input.exclusive ? 'wx' : 'w' })
     return buf.length
   }
 
@@ -59,6 +60,16 @@ export async function encodeAndWrite(input: EncodeInput): Promise<number> {
       throw new Error(`不支持的导出格式: ${format}`)
   }
 
-  await fs.writeFile(filePath, buf)
+  await fs.writeFile(filePath, buf, { flag: input.exclusive ? 'wx' : 'w' })
   return buf.length
+}
+
+/** The image was created exclusively; do not leave an untraceable derivative if the sidecar fails. */
+export async function writeFidelityProvenance(filePath: string, provenance: string): Promise<void> {
+  try {
+    await fs.writeFile(`${filePath}.provenance.json`, provenance, { encoding: 'utf8', flag: 'wx' })
+  } catch (error) {
+    await fs.unlink(filePath)
+    throw error
+  }
 }

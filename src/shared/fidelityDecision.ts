@@ -55,6 +55,21 @@ export function parentFidelityReference(text: string): ParentFidelityReference |
   }
 }
 
+/** A saved restoration can be compared only with its recorded, verified parent. */
+export function restorationParentReference(text: string): { path: string; sha256: string } | null {
+  try {
+    const record = JSON.parse(text) as { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown; parent?: { sourcePath?: unknown; sourceSha256?: unknown; fidelity?: { status?: unknown } } } }
+    const parent = record?.fidelity?.parent
+    if (record?.fidelity?.status !== 'restoration' || parent?.fidelity?.status !== 'verified-user-attested' ||
+      typeof parent.sourcePath !== 'string' || !parent.sourcePath ||
+      typeof parent.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(parent.sourceSha256) ||
+      record.sourcePath !== parent.sourcePath || record.sourceSha256 !== parent.sourceSha256) return null
+    return { path: parent.sourcePath, sha256: parent.sourceSha256 }
+  } catch {
+    return null
+  }
+}
+
 /** 保真之外的像素改变一律构成修复派生文件。 */
 export function isRestorationParams(params: EditParams): boolean {
   return params.denoise.enabled || params.repairs.length > 0 ||

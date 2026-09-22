@@ -162,6 +162,7 @@ interface EditorState {
   zoom: number
   immersive: boolean
   compare: boolean
+  restorationPath: string | null
   eyedropper: boolean
   exportOpen: boolean
   exporting: boolean
@@ -245,6 +246,7 @@ interface EditorState {
   setZoom: (zoom: number) => void
   toggleImmersive: () => void
   setCompare: (on: boolean) => void
+  setRestorationPath: (path: string | null) => void
   setEyedropper: (on: boolean) => void
   setExportOpen: (open: boolean) => void
   setExporting: (on: boolean) => void
@@ -389,6 +391,7 @@ export const useEditor = create<EditorState>((set, get) => {
         future: [],
         activePresetId: null,
         compare: false,
+        restorationPath: null,
         zoom: 1,
         tab: 'holder',
         modelPreviewUrl: null
@@ -450,6 +453,7 @@ export const useEditor = create<EditorState>((set, get) => {
     zoom: 1,
     immersive: false,
     compare: false,
+    restorationPath: null,
     eyedropper: false,
     exportOpen: false,
     exporting: false,
@@ -492,7 +496,8 @@ export const useEditor = create<EditorState>((set, get) => {
         future: [],
         activePresetId: null,
         library: [],
-        activeId: null
+        activeId: null,
+        restorationPath: null
       })
     },
 
@@ -526,6 +531,7 @@ export const useEditor = create<EditorState>((set, get) => {
           past: [...fresh.past],
           future: [...fresh.future],
           compare: false,
+          restorationPath: null,
           activePresetId: null,
           zoom: 1
         })
@@ -554,7 +560,7 @@ export const useEditor = create<EditorState>((set, get) => {
       const nextLibrary = library.filter((item) => item.id !== id)
       if (nextLibrary.length === 0) {
         void window.negLift.closeImage()
-        set({ library: [], activeId: null, image: null, params: createDefaultParams(), past: [], future: [] })
+        set({ library: [], activeId: null, image: null, params: createDefaultParams(), past: [], future: [], restorationPath: null })
         return
       }
       const newActive = nextLibrary[Math.min(idx, nextLibrary.length - 1)]
@@ -562,6 +568,7 @@ export const useEditor = create<EditorState>((set, get) => {
         library: nextLibrary,
         activeId: newActive.id,
         image: newActive.image,
+        restorationPath: null,
         params: cloneParams(newActive.params),
         past: [...newActive.past],
         future: [...newActive.future]
@@ -907,6 +914,7 @@ export const useEditor = create<EditorState>((set, get) => {
     setZoom: (zoom) => set({ zoom: Math.min(8, Math.max(0.05, zoom)) }),
     toggleImmersive: () => set({ immersive: !get().immersive }),
     setCompare: (on) => set({ compare: on }),
+    setRestorationPath: (path) => set({ restorationPath: path }),
     setEyedropper: (on) => set({ eyedropper: on }),
     setExportOpen: (open) => set({ exportOpen: open }),
     setExporting: (on) => set({ exporting: on }),

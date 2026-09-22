@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import {
   Contrast,
+  Columns2,
   FolderOpen,
   Layers,
   Maximize2,
@@ -15,6 +17,10 @@ import { useEditor } from '../state/store'
 
 export function TopBar() {
   const image = useEditor((s) => s.image)
+  const restorationPath = useEditor((s) => s.restorationPath)
+  const [restoration, setRestoration] = useState<{ parent: string; child: string } | null>(null)
+  const [showRestoration, setShowRestoration] = useState(false)
+  const closeComparisonRef = useRef<HTMLButtonElement>(null)
   const theme = useEditor((s) => s.theme)
   const compare = useEditor((s) => s.compare)
   const past = useEditor((s) => s.past.length)
@@ -29,6 +35,24 @@ export function TopBar() {
   const setCompare = useEditor((s) => s.setCompare)
   const setExportOpen = useEditor((s) => s.setExportOpen)
   const setBatchOpen = useEditor((s) => s.setBatchOpen)
+
+  useEffect(() => {
+    let current = true
+    setRestoration(null)
+    setShowRestoration(false)
+    if (image) void window.negLift.restorationComparison(restorationPath ?? image.meta.filePath).then((result) => {
+      if (current) setRestoration(result)
+    })
+    return () => { current = false }
+  }, [image, restorationPath])
+
+  useEffect(() => {
+    if (!showRestoration) return
+    closeComparisonRef.current?.focus()
+    const close = (event: globalThis.KeyboardEvent): void => { if (event.key === 'Escape') setShowRestoration(false) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [showRestoration])
 
   return (
     <header className="topbar">
@@ -82,6 +106,12 @@ export function TopBar() {
 
       <span className="topbar-spacer" />
 
+      {restoration && (
+        <button className="btn" title="比较已保存的修复派生文件与已验证父文件" onClick={() => setShowRestoration(true)}>
+          <Columns2 size={14} /> 比较父版
+        </button>
+      )}
+
       <button
         className={`btn${compare ? ' is-on' : ''}`}
         title="对比原片 (Ctrl+P)"
@@ -105,6 +135,21 @@ export function TopBar() {
       >
         {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
       </button>
+      {showRestoration && restoration && (
+        <div className="modal-backdrop" onPointerDown={() => setShowRestoration(false)}>
+          <div className="modal restoration-compare" role="dialog" aria-modal="true" aria-label="父版与修复派生文件对比" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Tab') event.preventDefault() }}>
+            <div className="modal-head">
+              <span>父版与修复派生文件</span>
+              <span className="spacer" />
+              <button ref={closeComparisonRef} className="btn is-ghost is-icon" title="关闭对比" aria-label="关闭对比" onClick={() => setShowRestoration(false)}><X size={15} /></button>
+            </div>
+            <div className="restoration-pair">
+              <figure><img src={restoration.parent} alt="已验证父版" /><figcaption>已验证父版</figcaption></figure>
+              <figure><img src={restoration.child} alt="修复派生文件" /><figcaption>修复派生文件</figcaption></figure>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
