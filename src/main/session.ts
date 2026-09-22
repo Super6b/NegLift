@@ -29,6 +29,7 @@ const PREVIEW_MAX_EDGE = 4096
 const ANALYSIS_MAX_EDGE = 1600
 
 export interface ImageSession {
+  sourcePath: string
   decode: DecodeResult
   /** 全尺寸（或超限降采样后）的线性数据，供渲染进程调色 */
   preview: Uint16Array
@@ -127,6 +128,7 @@ export async function openSession(filePath: string, onProgress?: ProgressReporte
   }
 
   current = {
+    sourcePath: filePath,
     decode,
     preview,
     previewWidth,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FolderOpen, Share2, X } from 'lucide-react'
 import type { ExportOptions } from '@shared/types'
+import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 import { useEditor } from '../state/store'
 
 type ExportFormat = ExportOptions['format']
@@ -10,7 +11,6 @@ const FORMATS: { id: ExportFormat; label: string; ext: string; note: string }[] 
   { id: 'jpeg', label: 'JPEG', ext: 'jpg', note: '体积小，适合分享与网络发布' },
   { id: 'png', label: 'PNG', ext: 'png', note: '无损压缩，适合需要继续后期的图像' },
   { id: 'tiff', label: 'TIFF', ext: 'tif', note: '无损，可选 8/16 位，适合印刷与归档' },
-  { id: 'dng', label: 'DNG', ext: 'dng', note: '16 位线性原始数据，可再次进入调色流程' },
   { id: 'bmp', label: 'BMP', ext: 'bmp', note: '无压缩位图，兼容性最好' }
 ]
 
@@ -48,6 +48,9 @@ export function ExportDialog() {
   const [customLongEdge, setCustomLongEdge] = useState('')
   const [target, setTarget] = useState<string | null>(null)
   const [scope, setScope] = useState<Scope>('current')
+  const [fidelity, setFidelity] = useState(false)
+  const [configurations, setConfigurations] = useState<FidelityConfiguration[]>([])
+  const [configurationId, setConfigurationId] = useState('')
 
   const meta = useMemo(() => {
     if (!image) return null
@@ -61,12 +64,16 @@ export function ExportDialog() {
     if (library.length <= 1) setScope('current')
   }, [format, image, library.length])
 
+  useEffect(() => {
+    if (!open) return
+    void window.negLift.listFidelityConfigurations().then((items) => setConfigurations(items.filter((item) => item.status === 'active')))
+  }, [open])
+
   if (!open || !image || !meta) return null
 
   const spec = FORMATS.find((f) => f.id === format) ?? FORMATS[0]
   const isJpeg = format === 'jpeg'
   const isTiff = format === 'tiff'
-  const isDng = format === 'dng'
   const multi = library.length > 1
   const exportCount =
     scope === 'current' ? 1 : scope === 'selected' ? selectedCount : library.length
@@ -86,7 +93,7 @@ export function ExportDialog() {
         const filePath = target ?? (await choosePath())
         if (!filePath) return
         const result = await window.negLift.exportImage(
-          { filePath, format, quality, tiffBitDepth: bitDepth, maxDimension, dpi },
+          { filePath, format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined },
           params
         )
         if (!result.ok) {
@@ -94,7 +101,9 @@ export function ExportDialog() {
           return
         }
         const size = result.fileSize ? `${(result.fileSize / 1024).toFixed(0)} KB` : ''
-        notify(`已导出 ${result.width} × ${result.height} ${size}`)
+        const fidelityNote = result.fidelityStatus && result.fidelityStatus !== 'practical'
+          ? ` · ${result.fidelityStatus === 'verified-user-attested' ? '用户确认的验证' : result.fidelityStatus === 'restoration' ? '修复派生文件' : '未验证'}${result.fidelityReasons?.length ? `：${result.fidelityReasons.join('；')}` : ''}` : ''
+        notify(`${result.notice ? `${result.notice} ` : ''}已导出 ${result.width} × ${result.height} ${size}${fidelityNote}`)
         setTarget(result.filePath ?? filePath)
         return
       }
@@ -120,11 +129,13 @@ export function ExportDialog() {
         const result = await window.negLift.exportImageFromPath(
           src,
           destPath,
-          { format, quality, tiffBitDepth: bitDepth, maxDimension, dpi },
+          { format: fidelity ? 'tiff' : format, quality, tiffBitDepth: fidelity ? 16 : bitDepth, maxDimension, dpi, fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined },
           item.params
         )
-        if (result.ok) ok++
-        else fail++
+        if (result.ok) {
+          ok++
+          if (result.notice) notify(result.notice)
+        } else fail++
       }
       if (fail > 0) notify(`批量导出完成：成功 ${ok}，失败 ${fail}`, 'error')
       else notify(`已导出 ${ok} 张到 ${dir}`)
@@ -193,6 +204,18 @@ export function ExportDialog() {
             <p className="hint">{spec.note}</p>
           </div>
 
+          <div className="section">
+            <div className="section-head"><span className="section-title">保真模式预览</span></div>
+            <label className="switch-row"><input type="checkbox" checked={fidelity} onChange={(e) => setFidelity(e.target.checked)} /><span>生成可追溯保真派生文件</span></label>
+            {fidelity && <>
+              <select className="field" value={configurationId} onChange={(e) => setConfigurationId(e.target.value)}>
+                <option value="">未选择采集配置（将导出未验证文件）</option>
+                {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
+              </select>
+              <p className="hint">保真模式固定导出 16 位 TIFF；缺少或未通过证据会自动加 `_unverified` 后缀，并写入配套谱系记录文件。</p>
+            </>}
+          </div>
+
           {isJpeg && (
             <div className="section">
               <div className="section-head">
@@ -232,12 +255,6 @@ export function ExportDialog() {
                 16 位导出保留完整影调层次，文件更大；8 位兼容性更好。
               </p>
             </div>
-          )}
-
-          {isDng && (
-            <p className="hint">
-              DNG 以 16 位线性 RGB 写入，并附带颜色矩阵与白平衡信息，可在保持调整结果的同时继续后期处理。
-            </p>
           )}
 
           <div className="section">

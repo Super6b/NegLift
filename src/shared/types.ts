@@ -290,7 +290,7 @@ export interface OpenBatchResult {
 
 export interface ExportOptions {
   filePath: string
-  format: 'jpeg' | 'png' | 'tiff' | 'bmp' | 'dng'
+  format: import('./exportFormat').ExportFormat
   /** JPEG 质量 1..100 */
   quality: number
   /** TIFF 位深 */
@@ -299,6 +299,12 @@ export interface ExportOptions {
   maxDimension: number | null
   /** 输出分辨率（DPI），写入文件元数据 */
   dpi: number
+  /** 保真模式请求；缺省为实用转换。 */
+  fidelity?: {
+    mode: import('./fidelityDecision').FidelityMode
+    configurationId?: string
+    shortCheckPassed?: boolean
+  }
 }
 
 export interface ExportResult {
@@ -307,6 +313,10 @@ export interface ExportResult {
   fileSize?: number
   width?: number
   height?: number
+  /** 兼容旧版设置时的迁移说明 */
+  notice?: string
+  fidelityStatus?: import('./fidelityDecision').FidelityExportStatus
+  fidelityReasons?: string[]
   error?: string
 }
 
@@ -423,6 +433,19 @@ export interface NegLiftApi {
   importCameraProfile(): Promise<{ ok: true; path: string; count: number } | null>
   /** 打开用户机型配置目录 */
   openCameraProfileDir(): Promise<void>
+  /** 本地保真采集配置；已发布配置只能通过新修订版变更。 */
+  listFidelityConfigurations(): Promise<import('./fidelityConfiguration').FidelityConfiguration[]>
+  saveFidelityConfigurationDraft(configuration: import('./fidelityConfiguration').FidelityConfiguration): Promise<void>
+  activateFidelityConfiguration(id: string): Promise<import('./fidelityConfiguration').FidelityConfiguration>
+  reviseFidelityConfiguration(
+    id: string,
+    nextId: string,
+    createdAt: string,
+    changes: Partial<Pick<import('./fidelityConfiguration').FidelityConfiguration, 'name' | 'film' | 'capture' | 'references' | 'thresholds' | 'revalidation' | 'adjustmentLimits' | 'visualReview' | 'sourceReference'>>
+  ): Promise<import('./fidelityConfiguration').ConfigurationRevisionResult>
+  /** 使用系统文件选择器导入或导出可携带的配置 JSON。 */
+  importFidelityConfigurations(): Promise<number | null>
+  exportFidelityConfigurations(): Promise<string | null>
   /** 本地修补模型状态 */
   inpaintStatus(): Promise<InpaintModelStatus>
   /** 选择并加载 ONNX 修补模型 */

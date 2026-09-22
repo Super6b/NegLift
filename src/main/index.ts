@@ -1,5 +1,6 @@
 import { join, basename as pathBasename } from 'node:path'
 import { promises as fs } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { cpus } from 'node:os'
 import {
   app,
@@ -8,7 +9,9 @@ import {
   dialog,
   ipcMain,
   shell,
-  type MenuItemConstructorOptions
+  type MenuItemConstructorOptions,
+  type OpenDialogOptions,
+  type SaveDialogOptions
 } from 'electron'
 import sharp from 'sharp'
 import type {
@@ -24,6 +27,8 @@ import type {
   LibraryOpenEntry
 } from '@shared/types'
 import { computeGeometry, renderLinear, sourceToRegion } from '@shared/pipeline'
+import { migrateExportOptions } from '@shared/exportFormat'
+import { decideFidelityExport, parentFidelityReference, type FidelityDecision } from '@shared/fidelityDecision'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
 import { RAW_EXTENSIONS, RASTER_EXTENSIONS, BMP_EXTENSIONS, decodeImage } from './decode'
 import { cancelBatch, runBatch } from './batch'
@@ -45,6 +50,8 @@ import {
   openSession,
   sampleBase
 } from './session'
+import { FidelityConfigurationStore, fidelityConfigurationFile } from './fidelityConfigurations'
+import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 
 const CHANNEL = {
   openDialog: 'neglift:open-dialog',
@@ -68,6 +75,12 @@ const CHANNEL = {
   batchProgress: 'neglift:batch-progress',
   importCameraProfile: 'neglift:import-camera-profile',
   openProfileDir: 'neglift:open-profile-dir',
+  fidelityList: 'neglift:fidelity-list',
+  fidelitySaveDraft: 'neglift:fidelity-save-draft',
+  fidelityActivate: 'neglift:fidelity-activate',
+  fidelityRevise: 'neglift:fidelity-revise',
+  fidelityImport: 'neglift:fidelity-import',
+  fidelityExport: 'neglift:fidelity-export',
   inpaintStatus: 'neglift:inpaint-status',
   inpaintPickModel: 'neglift:inpaint-pick-model',
   inpaintOpenFolder: 'neglift:inpaint-open-folder',
@@ -89,6 +102,10 @@ function stripDots(exts: string[]): string[] {
 }
 
 const ALL_IMAGE_EXTENSIONS = stripDots([...RAW_EXTENSIONS, ...RASTER_EXTENSIONS, ...BMP_EXTENSIONS])
+
+function fidelityConfigurations(): FidelityConfigurationStore {
+  return new FidelityConfigurationStore(fidelityConfigurationFile(app.getPath('userData')))
+}
 
 function applyTitleBarTheme(theme: 'dark' | 'light'): void {
   if (!mainWindow) return
@@ -230,9 +247,10 @@ function buildMenu(): void {
 }
 
 async function applyRepairAndEncode(
-  decode: { linear: Uint16Array; width: number; height: number; camera?: string },
+  decode: { linear: Uint16Array; width: number; height: number },
   params: EditParams,
-  options: ExportOptions
+  options: ExportOptions,
+  provenanceSummary?: string
 ): Promise<number> {
   const geo = computeGeometry(decode.width, decode.height, params.transform)
   const longEdge = Math.max(geo.outputWidth, geo.outputHeight)
@@ -265,8 +283,52 @@ async function applyRepairAndEncode(
     width: rendered.width,
     height: rendered.height,
     options,
-    cameraModel: decode.camera
+    provenanceSummary
   })
+}
+
+async function hashFile(filePath: string): Promise<string | null> {
+  try { return createHash('sha256').update(await fs.readFile(filePath)).digest('hex') } catch { return null }
+}
+
+function withUnverifiedSuffix(filePath: string, decision: FidelityDecision): string {
+  if (!decision.needsUnverifiedSuffix || /_unverified\.[^.]+$/i.test(filePath)) return filePath
+  return filePath.replace(/(\.[^.\\/]+)$/, '_unverified$1')
+}
+
+async function fidelityExport(
+  sourcePath: string,
+  isRaw: boolean,
+  params: EditParams,
+  options: ExportOptions
+): Promise<{ decision: FidelityDecision; options: ExportOptions; provenance: string }> {
+  const requested = options.fidelity
+  const configuration = requested?.configurationId
+    ? (await fidelityConfigurations().list()).find((item) => item.id === requested.configurationId) ?? null
+    : null
+  const sourceSha256 = requested?.mode === 'fidelity' ? await hashFile(sourcePath) : null
+  const decision = decideFidelityExport({
+    mode: requested?.mode ?? 'practical', configuration, params,
+    source: { path: sourcePath, isRaw, sha256: sourceSha256 },
+    now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed
+  })
+  const output = { ...options, filePath: withUnverifiedSuffix(options.filePath, decision) }
+  if (decision.requiresTiff16) { output.format = 'tiff'; output.tiffBitDepth = 16 }
+  let parent: unknown = null
+  if (decision.status === 'restoration') {
+    try {
+      const prior = parentFidelityReference(await fs.readFile(`${sourcePath}.provenance.json`, 'utf8'))
+      parent = prior ? { sourcePath, sourceSha256: sourceSha256 ?? prior.sourceSha256, fidelity: { status: prior.status } } : null
+    } catch {
+      // ponytail: no asset catalogue; import a prior TIFF plus its sidecar to preserve a parent link.
+      parent = { sourcePath, sourceSha256, fidelity: null }
+    }
+  }
+  const provenance = JSON.stringify({
+    schemaVersion: 1, sourcePath, sourceSha256,
+    fidelity: { status: decision.status, reasons: decision.reasons, configuration, requested, parent }, params
+  })
+  return { decision, options: output, provenance }
 }
 
 function registerIpc(): void {
@@ -351,7 +413,6 @@ function registerIpc(): void {
         { name: 'JPEG 图片', extensions: ['jpg'] },
         { name: 'PNG 图片', extensions: ['png'] },
         { name: 'TIFF 图片', extensions: ['tif', 'tiff'] },
-        { name: '线性 DNG', extensions: ['dng'] },
         { name: 'BMP 图片', extensions: ['bmp'] }
       ]
     }
@@ -366,13 +427,20 @@ function registerIpc(): void {
     const session = getSession()
     if (!session) return { ok: false, error: '没有已打开的图片' }
     try {
-      const size = await applyRepairAndEncode(session.decode, params, options)
+      const legacyDng = (options as { format?: unknown }).format === 'dng'
+      const migrated = migrateExportOptions(options)
+      const prepared = await fidelityExport(session.sourcePath, session.decode.isRaw, params, migrated)
+      const size = await applyRepairAndEncode(session.decode, params, prepared.options, prepared.provenance)
+      if (prepared.decision.status !== 'practical') await fs.writeFile(`${prepared.options.filePath}.provenance.json`, prepared.provenance, 'utf8')
       return {
         ok: true,
-        filePath: options.filePath,
+        filePath: prepared.options.filePath,
         fileSize: size,
         width: computeGeometry(session.decode.width, session.decode.height, params.transform).outputWidth,
-        height: computeGeometry(session.decode.width, session.decode.height, params.transform).outputHeight
+        height: computeGeometry(session.decode.width, session.decode.height, params.transform).outputHeight,
+        ...(legacyDng ? { notice: '旧版 DNG 导出已迁移为 16 位 TIFF。' } : {}),
+        fidelityStatus: prepared.decision.status,
+        fidelityReasons: prepared.decision.reasons
       }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -390,14 +458,21 @@ function registerIpc(): void {
     ): Promise<ExportResult> => {
       try {
         const decode = await decodeImage(sourcePath)
-        const size = await applyRepairAndEncode(decode, params, { ...options, filePath: destPath })
+        const legacyDng = (options as { format?: unknown }).format === 'dng'
+        const migrated = migrateExportOptions({ ...options, filePath: destPath })
+        const prepared = await fidelityExport(sourcePath, decode.isRaw, params, migrated)
+        const size = await applyRepairAndEncode(decode, params, prepared.options, prepared.provenance)
+        if (prepared.decision.status !== 'practical') await fs.writeFile(`${prepared.options.filePath}.provenance.json`, prepared.provenance, 'utf8')
         const geo = computeGeometry(decode.width, decode.height, params.transform)
         return {
           ok: true,
-          filePath: destPath,
+          filePath: prepared.options.filePath,
           fileSize: size,
           width: geo.outputWidth,
-          height: geo.outputHeight
+          height: geo.outputHeight,
+          ...(legacyDng ? { notice: '旧版 DNG 导出已迁移为 16 位 TIFF。' } : {}),
+          fidelityStatus: prepared.decision.status,
+          fidelityReasons: prepared.decision.reasons
         }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -452,9 +527,12 @@ function registerIpc(): void {
   ipcMain.handle(CHANNEL.batchRun, async (_event, request: BatchRequest): Promise<BatchProgress | null> => {
     if (!request?.files?.length || !request.outputDir) return null
     try {
+      const configuration = request.export.fidelity?.configurationId
+        ? (await fidelityConfigurations().list()).find((item) => item.id === request.export.fidelity?.configurationId) ?? null
+        : null
       return await runBatch(request, (p) => {
         mainWindow?.webContents.send(CHANNEL.batchProgress, p)
-      })
+      }, configuration)
     } catch (err) {
       return {
         index: 0,
@@ -495,6 +573,34 @@ function registerIpc(): void {
     const dir = join(app.getPath('userData'), 'neglift-camera-profiles')
     await fs.mkdir(dir, { recursive: true })
     shell.openPath(dir)
+  })
+
+  ipcMain.handle(CHANNEL.fidelityList, () => fidelityConfigurations().list())
+  ipcMain.handle(CHANNEL.fidelitySaveDraft, (_event, configuration: FidelityConfiguration) =>
+    fidelityConfigurations().saveDraft(configuration)
+  )
+  ipcMain.handle(CHANNEL.fidelityActivate, (_event, id: string) => fidelityConfigurations().activate(id))
+  ipcMain.handle(
+    CHANNEL.fidelityRevise,
+    (_event, id: string, nextId: string, createdAt: string, changes: Parameters<FidelityConfigurationStore['revise']>[3]) =>
+      fidelityConfigurations().revise(id, nextId, createdAt, changes)
+  )
+  ipcMain.handle(CHANNEL.fidelityImport, async () => {
+    const options: OpenDialogOptions = {
+      title: '导入保真采集配置（JSON）', properties: ['openFile'] as const, filters: [{ name: 'JSON 配置', extensions: ['json'] }]
+    }
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return fidelityConfigurations().importJson(await fs.readFile(result.filePaths[0], 'utf8'))
+  })
+  ipcMain.handle(CHANNEL.fidelityExport, async () => {
+    const options: SaveDialogOptions = {
+      title: '导出保真采集配置（JSON）', defaultPath: 'neglift-fidelity-configurations.json', filters: [{ name: 'JSON 配置', extensions: ['json'] }]
+    }
+    const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    await fs.writeFile(result.filePath, await fidelityConfigurations().exportJson(), 'utf8')
+    return result.filePath
   })
 
   ipcMain.handle(CHANNEL.inpaintStatus, () => getModelStatus())

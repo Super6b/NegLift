@@ -1,4 +1,6 @@
 import { Ban, FileJson, FolderOpen, Frame, RefreshCw, Scan } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { createFidelityConfigurationDraft, type FidelityConfiguration } from '@shared/fidelityConfiguration'
 import { Slider } from '../components/Slider'
 import { useControls } from '../hooks/useControls'
 import { useEditor } from '../state/store'
@@ -26,6 +28,9 @@ function areaInsets(v: { x: number; y: number; w: number; h: number } | null): {
  * 目的：定出干净的底片有效范围，供阶段②去色罩统计使用。
  */
 export function HolderPanel() {
+  const [fidelityConfigurations, setFidelityConfigurations] = useState<FidelityConfiguration[]>([])
+  const [selectedFidelityId, setSelectedFidelityId] = useState('')
+  const [fidelityJson, setFidelityJson] = useState('')
   const { params, update, begin, end } = useControls()
   const detectHolder = useEditor((s) => s.detectHolder)
   const setValidArea = useEditor((s) => s.setValidArea)
@@ -40,6 +45,19 @@ export function HolderPanel() {
   const scan: HolderScanDirection = t.holderScan === 'outward' ? 'outward' : 'inward'
   const holderMode = tool === 'holder'
   const excludeMode = tool === 'exclude'
+  const selectedFidelity = fidelityConfigurations.find((item) => item.id === selectedFidelityId) ?? null
+
+  const refreshFidelityConfigurations = (): void => {
+    void window.negLift.listFidelityConfigurations().then((items) => {
+      setFidelityConfigurations(items)
+      const selected = items.find((item) => item.id === selectedFidelityId) ?? items[items.length - 1]
+      if (selected) {
+        setSelectedFidelityId(selected.id)
+        setFidelityJson(JSON.stringify(selected, null, 2))
+      }
+    })
+  }
+  useEffect(refreshFidelityConfigurations, [])
 
   const setScan = (dir: HolderScanDirection): void => {
     update((d) => {
@@ -98,6 +116,39 @@ export function HolderPanel() {
             ? ` 当前有效区域：${(t.validArea.w * 100).toFixed(1)}% × ${(t.validArea.h * 100).toFixed(1)}%。`
             : ' 当前使用整幅画面。'}
         </p>
+      </div>
+
+      <div className="section">
+        <div className="section-head"><span className="section-title">保真采集配置（预览）</span></div>
+        <div className="row">
+          <button className="btn" onClick={() => {
+            const id = `fidelity-${Date.now().toString(36)}`
+            void window.negLift.saveFidelityConfigurationDraft(createFidelityConfigurationDraft(id, new Date().toISOString())).then(() => {
+              setSelectedFidelityId(id); refreshFidelityConfigurations(); notify('已创建保真配置草稿；补全下方记录后保存。')
+            })
+          }}>新建草稿</button>
+          <button className="btn is-ghost" onClick={() => void window.negLift.importFidelityConfigurations().then(refreshFidelityConfigurations)}>导入 JSON…</button>
+          <button className="btn is-ghost" onClick={() => void window.negLift.exportFidelityConfigurations()}>导出 JSON…</button>
+        </div>
+        {fidelityConfigurations.length > 0 && <>
+          <select className="field" value={selectedFidelityId} onChange={(event) => {
+            const selected = fidelityConfigurations.find((item) => item.id === event.target.value)
+            setSelectedFidelityId(event.target.value); setFidelityJson(selected ? JSON.stringify(selected, null, 2) : '')
+          }}>
+            {fidelityConfigurations.map((item) => <option key={item.id} value={item.id}>{item.name}（{item.status === 'active' ? '已激活' : item.status === 'superseded' ? '已被取代' : '草稿'}）</option>)}
+          </select>
+          <textarea className="field" rows={10} value={fidelityJson} onChange={(event) => setFidelityJson(event.target.value)} aria-label="保真采集配置记录" />
+          <div className="row">
+            <button className="btn" disabled={selectedFidelity?.status !== 'draft'} onClick={() => {
+              try {
+                const configuration = JSON.parse(fidelityJson) as FidelityConfiguration
+                void window.negLift.saveFidelityConfigurationDraft(configuration).then(() => { refreshFidelityConfigurations(); notify('已保存保真配置草稿。') })
+              } catch { notify('配置记录不是有效的 JSON。', 'error') }
+            }}>保存草稿</button>
+            <button className="btn is-primary" disabled={selectedFidelity?.status !== 'draft'} onClick={() => void window.negLift.activateFidelityConfiguration(selectedFidelityId).then(() => { refreshFidelityConfigurations(); notify('采集配置已激活，可用于保真导出。') }).catch((error) => notify(error instanceof Error ? error.message : String(error), 'error'))}>激活</button>
+          </div>
+        </>}
+        <p className="hint">已保存 {fidelityConfigurations.length} 个配置。按顺序填写采集条件、片基边/灰阶/色彩目标、测量证据、阈值和视觉质检条件；缺项只能保存为草稿。</p>
       </div>
 
       <div className="section">

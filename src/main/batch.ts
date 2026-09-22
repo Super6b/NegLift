@@ -6,6 +6,7 @@
  * RAW 解码时间藏进上一张的 CPU 计算里；sharp 使用多线程做 JPEG/PNG 编码。
  */
 import { promises as fs } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type {
   BatchFileResult,
@@ -24,6 +25,8 @@ import { encodeAndWrite } from './export'
 import { applyModelRepairs } from './inpaint/model'
 import { sourceToRegion } from '@shared/pipeline'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
+import { decideFidelityExport } from '@shared/fidelityDecision'
+import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 
 const ANALYSIS_MAX_EDGE = 1600
 
@@ -31,8 +34,7 @@ const OUT_EXT: Record<BatchRequest['export']['format'], string> = {
   jpeg: 'jpg',
   png: 'png',
   tiff: 'tif',
-  bmp: 'bmp',
-  dng: 'dng'
+  bmp: 'bmp'
 }
 
 let cancelFlag = false
@@ -134,19 +136,31 @@ async function analyzeAndRender(
 async function encodeJob(
   job: PreparedJob,
   rendered: ReturnType<typeof renderLinear>,
-  camera: string | undefined,
-  req: BatchRequest
+  params: EditParams,
+  req: BatchRequest,
+  configuration: FidelityConfiguration | null
 ): Promise<string> {
   const stem = job.fileName.replace(/\.[^.]+$/, '') || job.fileName
-  const outName = `${stem}_neglift.${OUT_EXT[req.export.format]}`
+  const sourceSha256 = req.export.fidelity?.mode === 'fidelity'
+    ? createHash('sha256').update(await fs.readFile(job.filePath)).digest('hex') : null
+  const decision = decideFidelityExport({
+    mode: req.export.fidelity?.mode ?? 'practical', configuration,
+    source: { path: job.filePath, isRaw: job.decode.isRaw, sha256: sourceSha256 }, params,
+    now: new Date().toISOString(), shortCheckPassed: req.export.fidelity?.shortCheckPassed
+  })
+  const format = decision.requiresTiff16 ? 'tiff' : req.export.format
+  const suffix = decision.needsUnverifiedSuffix ? '_unverified' : ''
+  const outName = `${stem}_neglift${suffix}.${OUT_EXT[format]}`
   const outPath = await uniqueOutputPath(req.outputDir, outName)
+  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration }, params })
   await encodeAndWrite({
     display: rendered.data,
     width: rendered.width,
     height: rendered.height,
-    options: { ...req.export, filePath: outPath },
-    cameraModel: camera
+    options: { ...req.export, format, tiffBitDepth: decision.requiresTiff16 ? 16 : req.export.tiffBitDepth, filePath: outPath },
+    provenanceSummary: provenance
   })
+  if (decision.status !== 'practical') await fs.writeFile(`${outPath}.provenance.json`, provenance, 'utf8')
   return outPath
 }
 
@@ -158,7 +172,8 @@ async function encodeJob(
  */
 export async function runBatch(
   req: BatchRequest,
-  onProgress: (p: BatchProgress) => void
+  onProgress: (p: BatchProgress) => void,
+  configuration: FidelityConfiguration | null = null
 ): Promise<BatchProgress> {
   cancelFlag = false
   const total = req.files.length
@@ -248,11 +263,11 @@ export async function runBatch(
 
     try {
       emit(i, fileName, 'analyze / render', 0.58)
-      const { rendered, camera } = await analyzeAndRender(job, template, req)
+      const { rendered, params } = await analyzeAndRender(job, template, req)
       if (cancelFlag) return finish('cancelled', i, fileName)
 
       emit(i, fileName, 'encode', 0.9)
-      const outPath = await encodeJob(job, rendered, camera, req)
+      const outPath = await encodeJob(job, rendered, params, req, configuration)
       results.push({ fileName, ok: true, output: outPath })
       emit(i, fileName, 'done', 1)
     } catch (err) {

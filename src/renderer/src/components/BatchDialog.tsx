@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, FolderOpen, Layers, Play, Square, X, XCircle } from 'lucide-react'
 import type { BatchFileResult, BatchProgress, BatchRequest, ExportOptions } from '@shared/types'
+import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 import { useEditor } from '../state/store'
 
 type ExportFormat = ExportOptions['format']
@@ -9,7 +10,6 @@ const FORMATS: { id: ExportFormat; label: string; ext: string }[] = [
   { id: 'jpeg', label: 'JPEG', ext: 'jpg' },
   { id: 'png', label: 'PNG', ext: 'png' },
   { id: 'tiff', label: 'TIFF', ext: 'tif' },
-  { id: 'dng', label: 'DNG', ext: 'dng' },
   { id: 'bmp', label: 'BMP', ext: 'bmp' }
 ]
 
@@ -32,6 +32,9 @@ export function BatchDialog() {
   const [autoHolder, setAutoHolder] = useState(true)
   const [autoDetect, setAutoDetect] = useState(true)
   const [useTemplate, setUseTemplate] = useState(true)
+  const [fidelity, setFidelity] = useState(false)
+  const [configurations, setConfigurations] = useState<FidelityConfiguration[]>([])
+  const [configurationId, setConfigurationId] = useState('')
 
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<BatchProgress | null>(null)
@@ -41,6 +44,11 @@ export function BatchDialog() {
     if (!open) return
     setResults([])
     setProgress(null)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    void window.negLift.listFidelityConfigurations().then((items) => setConfigurations(items.filter((item) => item.status === 'active')))
   }, [open])
 
   useEffect(() => window.negLift.onBatchProgress((p) => setProgress(p)), [])
@@ -69,11 +77,12 @@ export function BatchDialog() {
       outputDir: outputDir as string,
       template: params,
       export: {
-        format,
+        format: fidelity ? 'tiff' : format,
         quality,
-        tiffBitDepth: bitDepth,
+        tiffBitDepth: fidelity ? 16 : bitDepth,
         maxDimension: maxDimension > 0 ? maxDimension : null,
-        dpi
+        dpi,
+        fidelity: fidelity ? { mode: 'fidelity', configurationId: configurationId || undefined } : undefined
       },
       autoHolder: useTemplate ? autoHolder : true,
       autoDetect: useTemplate ? autoDetect : true
@@ -156,6 +165,18 @@ export function BatchDialog() {
                 {files.length > 8 && <div className="batch-file-item">… 另有 {files.length - 8} 个文件</div>}
               </div>
             )}
+          </div>
+
+          <div className="section">
+            <div className="section-head"><span className="section-title">整卷保真锁定（预览）</span></div>
+            <label className="switch-row"><input type="checkbox" checked={fidelity} disabled={running} onChange={(e) => setFidelity(e.target.checked)} /><span>对本卷使用同一采集配置</span></label>
+            {fidelity && <>
+              <select className="field" value={configurationId} disabled={running} onChange={(e) => setConfigurationId(e.target.value)}>
+                <option value="">未选择采集配置（整卷将标记为未验证）</option>
+                {configurations.map((item) => <option key={item.id} value={item.id}>{item.name}（修订版 {item.revision}）</option>)}
+              </select>
+              <p className="hint">保真批量固定输出 16 位 TIFF；每帧源文件与调整范围分别判定，未通过时自动加未验证后缀。</p>
+            </>}
           </div>
 
           <div className="section">

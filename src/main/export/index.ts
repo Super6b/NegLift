@@ -21,7 +21,7 @@ export interface EncodeInput {
   width: number
   height: number
   options: ExportOptions
-  cameraModel?: string
+  provenanceSummary?: string
 }
 
 /** 按目标格式编码并写入磁盘，返回文件字节数 */
@@ -29,14 +29,8 @@ export async function encodeAndWrite(input: EncodeInput): Promise<number> {
   const { display, width, height, options } = input
   const { format, quality, tiffBitDepth, dpi, filePath } = options
 
-  if (format === 'dng') {
-    const buf = encodeTiff16({ rgb16: display, width, height, dpi, dng: true, cameraModel: input.cameraModel })
-    await fs.writeFile(filePath, buf)
-    return buf.length
-  }
-
   if (format === 'tiff' && tiffBitDepth === 16) {
-    const buf = encodeTiff16({ rgb16: display, width, height, dpi })
+    const buf = encodeTiff16({ rgb16: display, width, height, dpi, description: input.provenanceSummary })
     await fs.writeFile(filePath, buf)
     return buf.length
   }

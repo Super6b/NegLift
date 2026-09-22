@@ -20,6 +20,7 @@ Desktop film-negative color correction & grading
 | **除尘** | 笔触涂抹灰尘/浮毛；自动识别后可删改 |
 | **预设** | 保存当前流程，批量套用到整卷胶片 |
 | **批量处理** | 模板式简易批处理（可选） |
+| **保真模式预览** | 针对已记录的彩色负片相机翻拍配置，导出 16 位 TIFF 与谱系记录；缺少验证证据时明确标记为未验证 |
 
 ## 安装与运行
 
@@ -74,7 +75,7 @@ src/
 
 | 输入 | 输出 |
 |------|------|
-| RAW：CR2 / CR3 / NEF / NRW / ARW / RAF / RW2 / ORF / DNG 等 | JPEG / PNG / TIFF(8·16) / BMP / DNG |
+| RAW：CR2 / CR3 / NEF / NRW / ARW / RAF / RW2 / ORF / DNG 等 | JPEG / PNG / TIFF(8·16) / BMP |
 | 常见图像：JPEG / PNG / TIFF / WebP / BMP 等 | |
 
 ## 文档
@@ -83,6 +84,7 @@ src/
 - [`docs/dust-repair-and-models.md`](docs/dust-repair-and-models.md) — 除尘与可选 ONNX 模型  
 - [`docs/camera-profile.example.json`](docs/camera-profile.example.json) — 机型配置示例  
 - [`models/README.md`](models/README.md) — 内置修补模型说明  
+- [`docs/fidelity-preview-quality-report-template.md`](docs/fidelity-preview-quality-report-template.md) — 保真模式预览质量报告模板
 
 ## License
 
