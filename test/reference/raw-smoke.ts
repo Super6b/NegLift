@@ -85,7 +85,7 @@ async function main(): Promise<void> {
     const sizes = await Promise.all(batch.results.map(async (result) => sharp(result.output!).metadata()))
     assert(sizes.every((metadata, index) => metadata.width === report[index].sourceSize[0] && metadata.height === report[index].sourceSize[1] && metadata.depth === 'ushort' && metadata.hasProfile))
     assert(records.every((record) => JSON.stringify(record.params.negative) === JSON.stringify(records[0].params.negative)))
-    assert(records.every((record) => JSON.stringify(record.fidelity.rollLock) === JSON.stringify(records[0].fidelity.rollLock)))
+    assert(records.every((record) => JSON.stringify(record.fidelity.requested.rollLock) === JSON.stringify(records[0].fidelity.requested.rollLock)))
     console.log(`Batch roll lock: ${batch.results.length} RAW frames passed`)
   }
   await fs.writeFile(path.join(outputDir, 'report.json'), JSON.stringify(report, null, 2))

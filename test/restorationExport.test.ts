@@ -8,6 +8,8 @@ import { fidelityDerivative, hashFile, verifiedParent } from '../src/main/verifi
 import { createDefaultParams } from '../src/shared/defaults'
 import { openSession } from '../src/main/session'
 import { runBatch } from '../src/main/batch'
+import { decodeImage } from '../src/main/decode'
+import { prepareFidelityExport } from '../src/main/fidelityExport'
 import { resolveDecodeOutputParams } from '../src/shared/cameraProfile'
 
 async function main(): Promise<void> {
@@ -103,8 +105,25 @@ async function testRollLock(): Promise<void> {
     assert.ok(batch.results.every((result) => result.ok), batch.results.map((result) => result.error).join('; '))
     const records = await Promise.all(batch.results.map(async (result) => JSON.parse(await fs.readFile(`${result.output}.provenance.json`, 'utf8'))))
     assert.deepEqual(records[0].params.negative, records[1].params.negative)
-    assert.deepEqual(records[0].fidelity.rollLock, records[1].fidelity.rollLock)
+    assert.deepEqual(records[0].fidelity.requested.rollLock, records[1].fidelity.requested.rollLock)
     assert.equal(records[1].fidelity.status, 'trial')
+    const prepared = await prepareFidelityExport(files[0], await decodeImage(files[0]), records[0].params, {
+      filePath: join(dir, 'first_neglift.jpg'), format: 'jpeg', tiffBitDepth: 8,
+      quality: 90, maxDimension: null, dpi: 300,
+      fidelity: { mode: 'fidelity', rollLock: records[0].fidelity.requested.rollLock }
+    }, null)
+    assert.equal(prepared.options.filePath, batch.results[0].output)
+    assert.equal(prepared.options.format, 'tiff')
+    assert.equal(prepared.options.tiffBitDepth, 16)
+    const expected = { ...records[0] }
+    delete expected.outputSha256
+    assert.deepEqual(JSON.parse(prepared.provenance), expected)
+    const repeated = await runBatch({
+      files: [files[0]], outputDir: dir, template: createDefaultParams(), autoHolder: false, autoDetect: true,
+      export: { format: 'tiff', tiffBitDepth: 16, quality: 90, maxDimension: null, dpi: 300, fidelity: { mode: 'fidelity' } }
+    }, () => undefined)
+    assert.equal(repeated.results[0].ok, true, repeated.results[0].error)
+    assert.match(repeated.results[0].output!, /_1_unverified\.tif$/)
   } finally { await fs.rm(dir, { recursive: true, force: true }) }
 }
 

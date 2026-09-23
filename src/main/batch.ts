@@ -24,9 +24,10 @@ import { encodeAndWrite, writeFidelityProvenance } from './export'
 import { applyModelRepairs } from './inpaint/model'
 import { sourceToRegion } from '@shared/pipeline'
 import type { CanvasRepairStroke } from '@shared/pipeline/repair'
-import { createFidelityRollLock, decideFidelityExport, isRestorationParams, type FidelityRollLock } from '@shared/fidelityDecision'
+import { createFidelityRollLock, type FidelityRollLock } from '@shared/fidelityDecision'
 import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
-import { fidelityDerivative, hashFile, verifiedParent } from './verifiedParent'
+import { fidelityDerivative } from './verifiedParent'
+import { prepareFidelityExport } from './fidelityExport'
 
 const ANALYSIS_MAX_EDGE = 1600
 
@@ -145,34 +146,23 @@ async function encodeJob(
   rollLock: FidelityRollLock | null
 ): Promise<string> {
   const stem = job.fileName.replace(/\.[^.]+$/, '') || job.fileName
-  const sourceSha256 = req.export.fidelity?.mode === 'fidelity' ? await hashFile(job.filePath) : null
-  const prior = req.export.fidelity?.mode === 'fidelity' && isRestorationParams(params)
-    ? await verifiedParent(job.filePath, sourceSha256) : null
-  const parent = prior ? { sourcePath: job.filePath, sourceSha256: prior.sha256, fidelity: { status: 'verified-user-attested' as const } } : null
-  const changes = prior ? Object.fromEntries(Object.entries(params).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(prior.params[key as keyof EditParams]))) : null
-  const decision = decideFidelityExport({
-    mode: req.export.fidelity?.mode ?? 'practical', configuration,
-    source: { path: job.filePath, isRaw: job.decode.isRaw, sha256: sourceSha256, camera: job.decode.camera, lens: job.decode.lens, degraded: job.decode.degraded }, params,
-    parent: parent ? { sourcePath: job.filePath, sourceSha256: prior!.sha256, status: 'verified-user-attested' } : null,
-    now: new Date().toISOString(), shortCheckPassed: req.export.fidelity?.shortCheckPassed, shortCheckAt: req.export.fidelity?.shortCheckAt, rollLock
-  })
-  if (req.export.fidelity?.mode === 'fidelity' && isRestorationParams(params) && !parent) {
-    throw new Error('修复派生文件需要已验证的父版及其完整谱系记录；请重新导出父版，或使用实用转换。')
+  const requested = req.export.fidelity
+  const options = {
+    ...req.export,
+    filePath: join(req.outputDir, `${stem}_neglift.${OUT_EXT[req.export.format]}`),
+    fidelity: requested ? { ...requested, rollLock: rollLock ?? undefined } : undefined
   }
-  const format = decision.requiresTiff16 ? 'tiff' : req.export.format
-  const suffix = decision.needsUnverifiedSuffix ? '_unverified' : ''
-  const outName = `${stem}_neglift${suffix}.${OUT_EXT[format]}`
-  const outPath = await uniqueOutputPath(req.outputDir, outName)
-  const provenance = JSON.stringify({ schemaVersion: 1, sourcePath: job.filePath, sourceSha256, fidelity: { status: decision.status, reasons: decision.reasons, configuration, shortCheckPassed: req.export.fidelity?.shortCheckPassed, shortCheckAt: req.export.fidelity?.shortCheckAt, rollLock, parent, changes }, params })
+  const prepared = await prepareFidelityExport(job.filePath, job.decode, params, options, configuration)
+  const outPath = await uniqueOutputPath(req.outputDir, basename(prepared.options.filePath))
   await encodeAndWrite({
     display: rendered.data,
     width: rendered.width,
     height: rendered.height,
-    options: { ...req.export, format, tiffBitDepth: decision.requiresTiff16 ? 16 : req.export.tiffBitDepth, filePath: outPath },
-    provenanceSummary: provenance,
-    exclusive: decision.status !== 'practical'
+    options: { ...prepared.options, filePath: outPath },
+    provenanceSummary: prepared.provenance,
+    exclusive: prepared.decision.status !== 'practical'
   })
-  if (decision.status !== 'practical') await writeFidelityProvenance(outPath, provenance)
+  if (prepared.decision.status !== 'practical') await writeFidelityProvenance(outPath, prepared.provenance)
   return outPath
 }
 
@@ -305,7 +295,9 @@ export async function uniqueOutputPath(dir: string, name: string): Promise<strin
   for (;;) {
     try {
       await fs.access(candidate)
-      candidate = join(dir, `${stem}_${n}${ext}`)
+      candidate = join(dir, stem.endsWith('_unverified')
+        ? `${stem.slice(0, -'_unverified'.length)}_${n}_unverified${ext}`
+        : `${stem}_${n}${ext}`)
       n++
     } catch {
       return candidate

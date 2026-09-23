@@ -31,6 +31,7 @@ assert.match(decideFidelityExport({ ...valid, source: { ...source, camera: '其�
 assert.match(decideFidelityExport({ ...valid, source: { ...source, lens: '其他镜头' } }).reasons.join(' '), /镜头不符/)
 assert.match(decideFidelityExport({ ...valid, source: { ...source, degraded: true } }).reasons.join(' '), /降级/)
 assert.match(decideFidelityExport({ ...valid, configuration: { ...configuration, sourceReference: { sha256: 'b'.repeat(64), originalPath: source.path } } }).reasons.join(' '), /校验值不符/)
+assert.equal(decideFidelityExport({ ...valid, source: { ...source, path: 'C:/next-frame.arw', sha256: 'c'.repeat(64) }, configuration: { ...configuration, sourceReference: { sha256: source.sha256!, originalPath: source.path } } }).status, 'verified-user-attested')
 assert.match(decideFidelityExport({ ...valid, source: { ...source, sha256: null } }).reasons.join(' '), /缺少源文件校验值/)
 const lock = createFidelityRollLock(valid.params, configuration)
 assert.equal(decideFidelityExport({ ...valid, rollLock: lock }).status, 'verified-user-attested')
