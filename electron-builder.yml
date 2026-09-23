@@ -14,7 +14,9 @@ buildDependenciesFromSource: false
 icon: build/icon.ico
 
 files:
-  - out/**/*
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
   - package.json
   - models/**/*
   - "!models/**/*.md"
