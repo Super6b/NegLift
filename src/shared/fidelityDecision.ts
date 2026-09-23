@@ -9,6 +9,7 @@ export interface FidelitySourceIdentity {
   sha256: string | null
   isRaw: boolean
   path: string
+  matchesReferencePath?: boolean
   camera?: string
   lens?: string
   degraded?: boolean
@@ -138,8 +139,9 @@ export function decideFidelityExport(input: FidelityDecisionInput): FidelityDeci
   if (input.source.degraded) reasons.push('原始图像解码已降级')
   if (!input.source.sha256) reasons.push('缺少源文件校验值')
   // A configuration may point to one reference capture, not every frame in the roll.
-  if (input.configuration.sourceReference?.originalPath === input.source.path &&
-    input.configuration.sourceReference.sha256.toLowerCase() !== input.source.sha256?.toLowerCase()) reasons.push('源文件校验值不符')
+  const reference = input.configuration.sourceReference
+  if (reference && (input.source.matchesReferencePath || reference.originalPath === input.source.path) &&
+    reference.sha256.toLowerCase() !== input.source.sha256?.toLowerCase()) reasons.push('源文件校验值不符')
   if (!input.source.camera) reasons.push('无法核对相机型号')
   else if (normalized(input.source.camera) !== normalized(input.configuration.capture.camera)) reasons.push('相机型号不符')
   if (input.source.lens && normalized(input.source.lens) !== normalized(input.configuration.capture.lens)) reasons.push('镜头不符')

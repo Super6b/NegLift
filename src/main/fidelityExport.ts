@@ -1,8 +1,18 @@
+import { promises as fs } from 'node:fs'
+import { resolve } from 'node:path'
 import type { EditParams, ExportOptions } from '@shared/types'
 import type { FidelityConfiguration } from '@shared/fidelityConfiguration'
 import { decideFidelityExport, fidelityOutputPath, isRestorationParams, type FidelityDecision } from '@shared/fidelityDecision'
 import type { DecodeResult } from './decode'
 import { hashFile, verifiedParent } from './verifiedParent'
+
+async function matchesReferencePath(sourcePath: string, referencePath: string): Promise<boolean> {
+  const canonical = async (filePath: string): Promise<string> => fs.realpath(filePath).catch(() => resolve(filePath))
+  const [source, reference] = await Promise.all([canonical(sourcePath), canonical(referencePath)])
+  return process.platform === 'win32'
+    ? source.toLowerCase() === reference.toLowerCase()
+    : source === reference
+}
 
 export async function prepareFidelityExport(
   sourcePath: string,
@@ -13,6 +23,9 @@ export async function prepareFidelityExport(
 ): Promise<{ decision: FidelityDecision; options: ExportOptions; provenance: string }> {
   const requested = options.fidelity
   const sourceSha256 = requested?.mode === 'fidelity' ? await hashFile(sourcePath) : null
+  const matchesRecordedSource = requested?.mode === 'fidelity' && configuration?.sourceReference
+    ? await matchesReferencePath(sourcePath, configuration.sourceReference.originalPath)
+    : false
   const needsParent = requested?.mode === 'fidelity' && isRestorationParams(params)
   const prior = needsParent && sourceSha256 ? await verifiedParent(sourcePath, sourceSha256) : null
   if (needsParent && !prior) {
@@ -24,7 +37,7 @@ export async function prepareFidelityExport(
     : null
   const decision = decideFidelityExport({
     mode: requested?.mode ?? 'practical', configuration, params,
-    source: { path: sourcePath, isRaw: decode.isRaw, sha256: sourceSha256, camera: decode.camera, lens: decode.lens, degraded: decode.degraded },
+    source: { path: sourcePath, isRaw: decode.isRaw, sha256: sourceSha256, camera: decode.camera, lens: decode.lens, degraded: decode.degraded, matchesReferencePath: matchesRecordedSource },
     now: new Date().toISOString(), shortCheckPassed: requested?.shortCheckPassed, shortCheckAt: requested?.shortCheckAt,
     rollLock: requested?.rollLock,
     parent: parent ? { sourcePath, sourceSha256: parent.sourceSha256, status: 'verified-user-attested' } : null
@@ -33,7 +46,9 @@ export async function prepareFidelityExport(
   if (decision.requiresTiff16) { output.format = 'tiff'; output.tiffBitDepth = 16 }
   const provenance = JSON.stringify({
     schemaVersion: 1, sourcePath, sourceSha256,
-    fidelity: { status: decision.status, reasons: decision.reasons, configuration, requested, parent, changes }, params
+    fidelity: { status: decision.status, reasons: decision.reasons, configuration, requested,
+      shortCheckPassed: requested?.shortCheckPassed, shortCheckAt: requested?.shortCheckAt,
+      rollLock: requested?.rollLock, parent, changes }, params
   })
   return { decision, options: output, provenance }
 }

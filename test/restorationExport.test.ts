@@ -86,6 +86,7 @@ async function main(): Promise<void> {
 
 async function testRollLock(): Promise<void> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'neglift-roll-'))
+  const shortCheckAt = new Date().toISOString()
   try {
     const files = [join(dir, 'first.png'), join(dir, 'second.png')]
     for (const [i, file] of files.entries()) {
@@ -99,18 +100,21 @@ async function testRollLock(): Promise<void> {
     }
     const batch = await runBatch({
       files, outputDir: dir, template: createDefaultParams(), autoHolder: false, autoDetect: true,
-      export: { format: 'tiff', tiffBitDepth: 16, quality: 90, maxDimension: null, dpi: 300, fidelity: { mode: 'fidelity' } }
+      export: { format: 'tiff', tiffBitDepth: 16, quality: 90, maxDimension: null, dpi: 300, fidelity: { mode: 'fidelity', shortCheckPassed: true, shortCheckAt } }
     }, () => undefined)
     assert.equal(batch.results.length, 2)
     assert.ok(batch.results.every((result) => result.ok), batch.results.map((result) => result.error).join('; '))
     const records = await Promise.all(batch.results.map(async (result) => JSON.parse(await fs.readFile(`${result.output}.provenance.json`, 'utf8'))))
     assert.deepEqual(records[0].params.negative, records[1].params.negative)
     assert.deepEqual(records[0].fidelity.requested.rollLock, records[1].fidelity.requested.rollLock)
+    assert.deepEqual(records[0].fidelity.rollLock, records[0].fidelity.requested.rollLock)
+    assert.equal(records[0].fidelity.shortCheckPassed, true)
+    assert.equal(records[0].fidelity.shortCheckAt, shortCheckAt)
     assert.equal(records[1].fidelity.status, 'trial')
     const prepared = await prepareFidelityExport(files[0], await decodeImage(files[0]), records[0].params, {
       filePath: join(dir, 'first_neglift.jpg'), format: 'jpeg', tiffBitDepth: 8,
       quality: 90, maxDimension: null, dpi: 300,
-      fidelity: { mode: 'fidelity', rollLock: records[0].fidelity.requested.rollLock }
+      fidelity: { mode: 'fidelity', shortCheckPassed: true, shortCheckAt, rollLock: records[0].fidelity.requested.rollLock }
     }, null)
     assert.equal(prepared.options.filePath, batch.results[0].output)
     assert.equal(prepared.options.format, 'tiff')
