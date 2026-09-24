@@ -24,7 +24,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:holder && npm run test:analysis && npm run test:export-format && npm run test:fidelity-configuration && npm run test:fidelity-decision && npm run test:restoration-export && npm run test:preview-fit
       - run: node node_modules/electron-vite/bin/electron-vite.js build
       - run: node node_modules/electron-builder/cli.js --win --config.publish.provider=github --config.publish.owner=Super6b --config.publish.repo=NegLift --publish never
       - run: gh release upload "${{ inputs.tag }}" release/NegLift-*-win-portable.exe release/NegLift-*-win-x64.exe --clobber
